@@ -1,13 +1,16 @@
 import './App.css'
+import { BrowserRouter, Routes, Route, Link } from 'react-router-dom'
+import Market from './pages/Market.jsx'
 
-function App() {
+function Home() {
     return (
         <div className="app">
             <header className="header">
                 <div className="logo">NiouStock</div>
 
                 <nav className="nav">
-                    <a href="#">市場</a>
+                    <Link to="/">首頁</Link>
+                    <Link to="/market">市場</Link>
                     <a href="#">自選</a>
                     <a href="#">排行榜</a>
                     <a href="#">我的資產</a>
@@ -54,7 +57,7 @@ function App() {
                 <section className="market-section">
                     <div className="section-header">
                         <h2>熱門創作者</h2>
-                        <a href="#">查看全部</a>
+                        <Link to="/market">查看全部</Link>
                     </div>
 
                     <div className="empty-state">
@@ -64,6 +67,17 @@ function App() {
                 </section>
             </main>
         </div>
+    )
+}
+
+function App() {
+    return (
+        <BrowserRouter>
+            <Routes>
+                <Route path="/" element={<Home />} />
+                <Route path="/market" element={<Market />} />
+            </Routes>
+        </BrowserRouter>
     )
 }
 
