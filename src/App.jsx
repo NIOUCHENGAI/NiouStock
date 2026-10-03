@@ -1,6 +1,7 @@
 import './App.css'
 import { BrowserRouter, Routes, Route, Link } from 'react-router-dom'
 import Market from './pages/Market.jsx'
+import StockDetail from './pages/StockDetail.jsx'
 
 function Home() {
     return (
@@ -76,6 +77,7 @@ function App() {
             <Routes>
                 <Route path="/" element={<Home />} />
                 <Route path="/market" element={<Market />} />
+                <Route path="/stock/YT001" element={<StockDetail />} />
             </Routes>
         </BrowserRouter>
     )
