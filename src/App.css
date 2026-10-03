@@ -1,0 +1,149 @@
+* {
+    box-sizing: border-box;
+}
+
+body {
+    margin: 0;
+    font-family: Arial, sans-serif;
+    background: #f5f6f8;
+    color: #1f2937;
+}
+
+button {
+    font: inherit;
+}
+
+.app {
+    min-height: 100vh;
+}
+
+.header {
+    height: 64px;
+    padding: 0 32px;
+    background: #ffffff;
+    border-bottom: 1px solid #e5e7eb;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+}
+
+.logo {
+    font-size: 22px;
+    font-weight: 700;
+}
+
+.nav {
+    display: flex;
+    gap: 28px;
+}
+
+.nav a {
+    color: #6b7280;
+    text-decoration: none;
+    font-size: 15px;
+}
+
+.nav a:hover {
+    color: #111827;
+}
+
+.account {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    font-size: 14px;
+}
+
+.account span {
+    color: #6b7280;
+}
+
+.account strong {
+    color: #111827;
+}
+
+.main {
+    max-width: 1400px;
+    margin: 0 auto;
+    padding: 40px 32px;
+}
+
+.welcome {
+    margin-bottom: 32px;
+}
+
+.welcome h1 {
+    margin: 0 0 8px;
+    font-size: 32px;
+}
+
+.welcome p {
+    margin: 0;
+    color: #6b7280;
+}
+
+.market-overview {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 16px;
+    margin-bottom: 40px;
+}
+
+.card {
+    padding: 24px;
+    background: #ffffff;
+    border: 1px solid #e5e7eb;
+    border-radius: 12px;
+}
+
+.card span,
+.card small {
+    display: block;
+    color: #6b7280;
+}
+
+.card strong {
+    display: block;
+    margin: 10px 0 6px;
+    font-size: 26px;
+}
+
+.market-section {
+    background: #ffffff;
+    border: 1px solid #e5e7eb;
+    border-radius: 12px;
+    padding: 24px;
+}
+
+.section-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 24px;
+}
+
+.section-header h2 {
+    margin: 0;
+    font-size: 20px;
+}
+
+.section-header a {
+    color: #2563eb;
+    text-decoration: none;
+    font-size: 14px;
+}
+
+.empty-state {
+    padding: 60px 20px;
+    text-align: center;
+}
+
+.empty-state h3 {
+    margin: 0 0 8px;
+}
+
+.empty-state p {
+    margin: 0;
+    color: #6b7280;
+    line-height: 1.6;
+}
