@@ -1,14 +1,29 @@
+import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 
 function Market() {
-    const stock = {
-        code: 'YT001',
-        name: 'Test Creator',
-        category: 'YouTube',
-        price: 100.00,
-        change: 5.20,
-        changePercent: 5.49
-    }
+    const [stocks, setStocks] = useState([])
+    const [loading, setLoading] = useState(true)
+    const [error, setError] = useState('')
+
+    useEffect(() => {
+        fetch('http://localhost:3000/api/stocks')
+            .then(response => {
+                if (!response.ok) {
+                    throw new Error('取得股票資料失敗')
+                }
+
+                return response.json()
+            })
+            .then(data => {
+                setStocks(data)
+                setLoading(false)
+            })
+            .catch(() => {
+                setError('無法連接 NiouStock 後端')
+                setLoading(false)
+            })
+    }, [])
 
     return (
         <div className="main">
@@ -22,27 +37,40 @@ function Market() {
                     <h2>熱門創作者</h2>
                 </div>
 
-                <Link
-                    to={`/stock/${stock.code}`}
-                    style={{
-                        textDecoration: 'none',
-                        color: 'inherit'
-                    }}
-                >
-                    <div className="stock-row">
-                        <div>
-                            <strong>{stock.code}</strong>
-                            <span>{stock.name}</span>
-                            <small>{stock.category}</small>
-                        </div>
+                {loading && <p>載入股票資料中...</p>}
 
-                        <div>
-                            <strong>${stock.price.toFixed(2)}</strong>
-                            <span>+{stock.change.toFixed(2)}</span>
-                            <small>+{stock.changePercent.toFixed(2)}%</small>
+                {error && <p>{error}</p>}
+
+                {!loading && !error && stocks.map(stock => (
+                    <Link
+                        key={stock.code}
+                        to={`/stock/${stock.code}`}
+                        style={{
+                            textDecoration: 'none',
+                            color: 'inherit'
+                        }}
+                    >
+                        <div className="stock-row">
+                            <div>
+                                <strong>{stock.code}</strong>
+                                <span>{stock.name}</span>
+                                <small>{stock.category}</small>
+                            </div>
+
+                            <div>
+                                <strong>${stock.price.toFixed(2)}</strong>
+                                <span>
+                                    {stock.change >= 0 ? '+' : ''}
+                                    {stock.change.toFixed(2)}
+                                </span>
+                                <small>
+                                    {stock.changePercent >= 0 ? '+' : ''}
+                                    {stock.changePercent.toFixed(2)}%
+                                </small>
+                            </div>
                         </div>
-                    </div>
-                </Link>
+                    </Link>
+                ))}
             </section>
         </div>
     )

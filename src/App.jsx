@@ -63,7 +63,9 @@ function Home() {
 
                     <div className="empty-state">
                         <h3>市場尚未建立</h3>
-                        <p>之後會在這裡出現 YouTube、Twitch、VTuber、KOL 等創作者股票。</p>
+                        <p>
+                            之後會在這裡出現 YouTube、Twitch、VTuber、KOL 等創作者股票。
+                        </p>
                     </div>
                 </section>
             </main>
@@ -77,7 +79,7 @@ function App() {
             <Routes>
                 <Route path="/" element={<Home />} />
                 <Route path="/market" element={<Market />} />
-                <Route path="/stock/YT001" element={<StockDetail />} />
+                <Route path="/stock/:code" element={<StockDetail />} />
             </Routes>
         </BrowserRouter>
     )
