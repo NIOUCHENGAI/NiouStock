@@ -18,6 +18,8 @@ const stocks = [
     }
 ]
 
+const orders = []
+
 app.get('/api', (req, res) => {
     res.json({
         message: 'NiouStock API 正常運作'
@@ -38,6 +40,62 @@ app.get('/api/stocks/:code', (req, res) => {
     }
 
     res.json(stock)
+})
+
+app.get('/api/orders', (req, res) => {
+    res.json(orders)
+})
+
+app.post('/api/orders', (req, res) => {
+    const {
+        stockCode,
+        side,
+        price,
+        quantity
+    } = req.body
+
+    const stock = stocks.find(item => item.code === stockCode)
+
+    if (!stock) {
+        return res.status(404).json({
+            message: '找不到這支股票'
+        })
+    }
+
+    if (side !== 'buy' && side !== 'sell') {
+        return res.status(400).json({
+            message: '訂單方向錯誤'
+        })
+    }
+
+    if (!price || Number(price) <= 0) {
+        return res.status(400).json({
+            message: '價格必須大於 0'
+        })
+    }
+
+    if (!quantity || Number(quantity) <= 0) {
+        return res.status(400).json({
+            message: '數量必須大於 0'
+        })
+    }
+
+    const order = {
+        id: orders.length + 1,
+        stockCode,
+        side,
+        price: Number(price),
+        quantity: Number(quantity),
+        status: 'pending',
+        createdAt: new Date().toISOString()
+    }
+
+    orders.push(order)
+
+    res.status(201).json({
+        message: '訂單建立成功',
+        order
+    })
 })
 
 app.listen(PORT, () => {

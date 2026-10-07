@@ -29,6 +29,45 @@ function StockDetail() {
             })
     }, [code])
 
+    async function submitOrder(side) {
+        if (!quantity || Number(quantity) <= 0) {
+            setMessage('請輸入有效的數量')
+            return
+        }
+
+        try {
+            const response = await fetch('http://localhost:3000/api/orders', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({
+                    stockCode: stock.code,
+                    side,
+                    price: stock.price,
+                    quantity: Number(quantity)
+                })
+            })
+
+            const data = await response.json()
+
+            if (!response.ok) {
+                setMessage(data.message)
+                return
+            }
+
+            if (side === 'buy') {
+                setMessage(`買單建立成功，訂單編號：${data.order.id}`)
+            } else {
+                setMessage(`賣單建立成功，訂單編號：${data.order.id}`)
+            }
+
+            setQuantity('')
+        } catch {
+            setMessage('無法連接交易伺服器')
+        }
+    }
+
     if (loading) {
         return (
             <div className="main">
@@ -46,28 +85,6 @@ function StockDetail() {
     }
 
     const total = Number(quantity || 0) * stock.price
-
-    function handleBuy() {
-        if (!quantity || Number(quantity) <= 0) {
-            setMessage('請輸入有效的購買數量')
-            return
-        }
-
-        setMessage(
-            `準備買入 ${quantity} 股，總金額 $${total.toFixed(2)}`
-        )
-    }
-
-    function handleSell() {
-        if (!quantity || Number(quantity) <= 0) {
-            setMessage('請輸入有效的出售數量')
-            return
-        }
-
-        setMessage(
-            `準備賣出 ${quantity} 股，總金額 $${total.toFixed(2)}`
-        )
-    }
 
     return (
         <div className="main">
@@ -128,11 +145,11 @@ function StockDetail() {
                     </p>
 
                     <div>
-                        <button onClick={handleBuy}>
+                        <button onClick={() => submitOrder('buy')}>
                             買入
                         </button>
 
-                        <button onClick={handleSell}>
+                        <button onClick={() => submitOrder('sell')}>
                             賣出
                         </button>
                     </div>
