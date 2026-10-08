@@ -5,6 +5,7 @@ function StockDetail() {
     const { code } = useParams()
 
     const [stock, setStock] = useState(null)
+    const [price, setPrice] = useState('')
     const [quantity, setQuantity] = useState('')
     const [message, setMessage] = useState('')
     const [loading, setLoading] = useState(true)
@@ -21,6 +22,7 @@ function StockDetail() {
             })
             .then(data => {
                 setStock(data)
+                setPrice(data.price)
                 setLoading(false)
             })
             .catch(() => {
@@ -30,6 +32,11 @@ function StockDetail() {
     }, [code])
 
     async function submitOrder(side) {
+        if (!price || Number(price) <= 0) {
+            setMessage('請輸入有效的價格')
+            return
+        }
+
         if (!quantity || Number(quantity) <= 0) {
             setMessage('請輸入有效的數量')
             return
@@ -44,7 +51,7 @@ function StockDetail() {
                 body: JSON.stringify({
                     stockCode: stock.code,
                     side,
-                    price: stock.price,
+                    price: Number(price),
                     quantity: Number(quantity)
                 })
             })
@@ -84,7 +91,7 @@ function StockDetail() {
         )
     }
 
-    const total = Number(quantity || 0) * stock.price
+    const total = Number(quantity || 0) * Number(price || 0)
 
     return (
         <div className="main">
@@ -116,14 +123,18 @@ function StockDetail() {
                 <hr />
 
                 <div>
-                    <h2>交易</h2>
+                    <h2>限價交易</h2>
 
                     <label>
-                        價格
+                        掛單價格
                         <input
                             type="number"
-                            value={stock.price}
-                            readOnly
+                            min="0.01"
+                            step="0.01"
+                            value={price}
+                            onChange={(event) =>
+                                setPrice(event.target.value)
+                            }
                         />
                     </label>
 

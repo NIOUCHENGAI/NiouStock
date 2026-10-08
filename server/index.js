@@ -20,6 +20,48 @@ const stocks = [
 
 const orders = []
 
+function findMatchingOrder(newOrder) {
+    const candidates = orders.filter(order => {
+        if (order.stockCode !== newOrder.stockCode) {
+            return false
+        }
+
+        if (order.status !== 'pending') {
+            return false
+        }
+
+        if (order.side === newOrder.side) {
+            return false
+        }
+
+        if (newOrder.side === 'buy') {
+            return order.price <= newOrder.price
+        }
+
+        return order.price >= newOrder.price
+    })
+
+    if (newOrder.side === 'buy') {
+        candidates.sort((a, b) => {
+            if (a.price !== b.price) {
+                return a.price - b.price
+            }
+
+            return a.id - b.id
+        })
+    } else {
+        candidates.sort((a, b) => {
+            if (a.price !== b.price) {
+                return b.price - a.price
+            }
+
+            return a.id - b.id
+        })
+    }
+
+    return candidates[0] || null
+}
+
 app.get('/api', (req, res) => {
     res.json({
         message: 'NiouStock API 正常運作'
@@ -90,11 +132,16 @@ app.post('/api/orders', (req, res) => {
         createdAt: new Date().toISOString()
     }
 
+    const matchingOrder = findMatchingOrder(order)
+
     orders.push(order)
 
     res.status(201).json({
-        message: '訂單建立成功',
-        order
+        message: matchingOrder
+            ? '訂單建立成功，找到可撮合的對手單'
+            : '訂單建立成功，目前沒有可撮合的對手單',
+        order,
+        matchingOrder
     })
 })
 
