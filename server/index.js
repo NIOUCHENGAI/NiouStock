@@ -87,6 +87,7 @@ function findMatchingOrder(newOrder) {
 
 function updateStockPrice(stock, price) {
     stock.price = price
+
     stock.change = Number(
         (stock.price - stock.previousClose).toFixed(2)
     )
@@ -149,6 +150,54 @@ function executeMatches(newOrder, stock) {
     return completedTrades
 }
 
+function buildOrderBook(stockCode) {
+    const openOrders = orders.filter(order => {
+        return (
+            order.stockCode === stockCode &&
+            isOrderOpen(order) &&
+            order.remainingQuantity > 0
+        )
+    })
+
+    const buyMap = new Map()
+    const sellMap = new Map()
+
+    openOrders.forEach(order => {
+        const targetMap =
+            order.side === 'buy'
+                ? buyMap
+                : sellMap
+
+        const currentQuantity =
+            targetMap.get(order.price) || 0
+
+        targetMap.set(
+            order.price,
+            currentQuantity + order.remainingQuantity
+        )
+    })
+
+    const buys = Array.from(buyMap.entries())
+        .map(([price, quantity]) => ({
+            price,
+            quantity
+        }))
+        .sort((a, b) => b.price - a.price)
+
+    const sells = Array.from(sellMap.entries())
+        .map(([price, quantity]) => ({
+            price,
+            quantity
+        }))
+        .sort((a, b) => a.price - b.price)
+
+    return {
+        stockCode,
+        buys,
+        sells
+    }
+}
+
 app.get('/api', (req, res) => {
     res.json({
         message: 'NiouStock API 正常運作'
@@ -179,6 +228,22 @@ app.get('/api/orders', (req, res) => {
 
 app.get('/api/trades', (req, res) => {
     res.json(trades)
+})
+
+app.get('/api/orderbook/:code', (req, res) => {
+    const stock = stocks.find(
+        item => item.code === req.params.code
+    )
+
+    if (!stock) {
+        return res.status(404).json({
+            message: '找不到這支股票'
+        })
+    }
+
+    const orderBook = buildOrderBook(req.params.code)
+
+    res.json(orderBook)
 })
 
 app.post('/api/orders', (req, res) => {
