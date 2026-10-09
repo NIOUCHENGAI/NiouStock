@@ -5,11 +5,36 @@ function StockDetail() {
     const { code } = useParams()
 
     const [stock, setStock] = useState(null)
+    const [orderBook, setOrderBook] = useState({
+        buys: [],
+        sells: []
+    })
+
     const [price, setPrice] = useState('')
     const [quantity, setQuantity] = useState('')
     const [message, setMessage] = useState('')
     const [loading, setLoading] = useState(true)
     const [error, setError] = useState('')
+
+    function loadOrderBook() {
+        fetch(`http://localhost:3000/api/orderbook/${code}`)
+            .then(response => {
+                if (!response.ok) {
+                    throw new Error('取得訂單簿失敗')
+                }
+
+                return response.json()
+            })
+            .then(data => {
+                setOrderBook(data)
+            })
+            .catch(() => {
+                setOrderBook({
+                    buys: [],
+                    sells: []
+                })
+            })
+    }
 
     useEffect(() => {
         fetch(`http://localhost:3000/api/stocks/${code}`)
@@ -29,6 +54,8 @@ function StockDetail() {
                 setError('無法取得股票資料')
                 setLoading(false)
             })
+
+        loadOrderBook()
     }, [code])
 
     async function submitOrder(side) {
@@ -63,13 +90,24 @@ function StockDetail() {
                 return
             }
 
-            if (side === 'buy') {
-                setMessage(`買單建立成功，訂單編號：${data.order.id}`)
+            if (data.trades.length > 0) {
+                setMessage(
+                    `訂單成功，產生 ${data.trades.length} 筆成交`
+                )
             } else {
-                setMessage(`賣單建立成功，訂單編號：${data.order.id}`)
+                setMessage('掛單成功，等待成交')
             }
 
             setQuantity('')
+
+            const stockResponse = await fetch(
+                `http://localhost:3000/api/stocks/${code}`
+            )
+
+            const stockData = await stockResponse.json()
+
+            setStock(stockData)
+            loadOrderBook()
         } catch {
             setMessage('無法連接交易伺服器')
         }
@@ -118,6 +156,66 @@ function StockDetail() {
                         {stock.changePercent.toFixed(2)}%
                         )
                     </p>
+                </div>
+
+                <hr />
+
+                <div>
+                    <h2>委託簿</h2>
+
+                    <h3>賣單</h3>
+
+                    {orderBook.sells.length === 0 && (
+                        <p>目前沒有賣單</p>
+                    )}
+
+                    {orderBook.sells.map((order, index) => (
+                        <div key={`sell-${order.price}`}>
+                            <span>
+                                賣{index + 1}
+                            </span>
+
+                            {' '}
+
+                            <span>
+                                ${order.price.toFixed(2)}
+                            </span>
+
+                            {' '}
+
+                            <span>
+                                {order.quantity} 股
+                            </span>
+                        </div>
+                    ))}
+
+                    <hr />
+
+                    <h3>買單</h3>
+
+                    {orderBook.buys.length === 0 && (
+                        <p>目前沒有買單</p>
+                    )}
+
+                    {orderBook.buys.map((order, index) => (
+                        <div key={`buy-${order.price}`}>
+                            <span>
+                                買{index + 1}
+                            </span>
+
+                            {' '}
+
+                            <span>
+                                ${order.price.toFixed(2)}
+                            </span>
+
+                            {' '}
+
+                            <span>
+                                {order.quantity} 股
+                            </span>
+                        </div>
+                    ))}
                 </div>
 
                 <hr />
