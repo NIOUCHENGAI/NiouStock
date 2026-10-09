@@ -13,20 +13,43 @@ const stocks = [
         name: 'Test Creator',
         category: 'YouTube',
         price: 100.00,
+        previousClose: 94.80,
         change: 5.20,
         changePercent: 5.49
     }
 ]
 
 const orders = []
+const trades = []
+
+function isOrderOpen(order) {
+    return (
+        order.status === 'pending' ||
+        order.status === 'partially_filled'
+    )
+}
+
+function updateOrderStatus(order) {
+    if (order.remainingQuantity === 0) {
+        order.status = 'filled'
+    } else if (order.remainingQuantity < order.quantity) {
+        order.status = 'partially_filled'
+    } else {
+        order.status = 'pending'
+    }
+}
 
 function findMatchingOrder(newOrder) {
     const candidates = orders.filter(order => {
+        if (order.id === newOrder.id) {
+            return false
+        }
+
         if (order.stockCode !== newOrder.stockCode) {
             return false
         }
 
-        if (order.status !== 'pending') {
+        if (!isOrderOpen(order)) {
             return false
         }
 
@@ -62,6 +85,70 @@ function findMatchingOrder(newOrder) {
     return candidates[0] || null
 }
 
+function updateStockPrice(stock, price) {
+    stock.price = price
+    stock.change = Number(
+        (stock.price - stock.previousClose).toFixed(2)
+    )
+
+    stock.changePercent = Number(
+        (
+            (stock.change / stock.previousClose) *
+            100
+        ).toFixed(2)
+    )
+}
+
+function executeMatches(newOrder, stock) {
+    const completedTrades = []
+
+    while (newOrder.remainingQuantity > 0) {
+        const matchingOrder = findMatchingOrder(newOrder)
+
+        if (!matchingOrder) {
+            break
+        }
+
+        const tradeQuantity = Math.min(
+            newOrder.remainingQuantity,
+            matchingOrder.remainingQuantity
+        )
+
+        const tradePrice = matchingOrder.price
+
+        newOrder.remainingQuantity -= tradeQuantity
+        matchingOrder.remainingQuantity -= tradeQuantity
+
+        updateOrderStatus(newOrder)
+        updateOrderStatus(matchingOrder)
+
+        const trade = {
+            id: trades.length + 1,
+            stockCode: newOrder.stockCode,
+            price: tradePrice,
+            quantity: tradeQuantity,
+            buyOrderId:
+                newOrder.side === 'buy'
+                    ? newOrder.id
+                    : matchingOrder.id,
+            sellOrderId:
+                newOrder.side === 'sell'
+                    ? newOrder.id
+                    : matchingOrder.id,
+            createdAt: new Date().toISOString()
+        }
+
+        trades.push(trade)
+        completedTrades.push(trade)
+
+        updateStockPrice(stock, tradePrice)
+    }
+
+    updateOrderStatus(newOrder)
+
+    return completedTrades
+}
+
 app.get('/api', (req, res) => {
     res.json({
         message: 'NiouStock API 正常運作'
@@ -73,7 +160,9 @@ app.get('/api/stocks', (req, res) => {
 })
 
 app.get('/api/stocks/:code', (req, res) => {
-    const stock = stocks.find(item => item.code === req.params.code)
+    const stock = stocks.find(
+        item => item.code === req.params.code
+    )
 
     if (!stock) {
         return res.status(404).json({
@@ -88,6 +177,10 @@ app.get('/api/orders', (req, res) => {
     res.json(orders)
 })
 
+app.get('/api/trades', (req, res) => {
+    res.json(trades)
+})
+
 app.post('/api/orders', (req, res) => {
     const {
         stockCode,
@@ -96,7 +189,9 @@ app.post('/api/orders', (req, res) => {
         quantity
     } = req.body
 
-    const stock = stocks.find(item => item.code === stockCode)
+    const stock = stocks.find(
+        item => item.code === stockCode
+    )
 
     if (!stock) {
         return res.status(404).json({
@@ -128,23 +223,30 @@ app.post('/api/orders', (req, res) => {
         side,
         price: Number(price),
         quantity: Number(quantity),
+        remainingQuantity: Number(quantity),
         status: 'pending',
         createdAt: new Date().toISOString()
     }
 
-    const matchingOrder = findMatchingOrder(order)
-
     orders.push(order)
 
-    res.status(201).json({
-        message: matchingOrder
-            ? '訂單建立成功，找到可撮合的對手單'
-            : '訂單建立成功，目前沒有可撮合的對手單',
+    const completedTrades = executeMatches(
         order,
-        matchingOrder
+        stock
+    )
+
+    res.status(201).json({
+        message:
+            completedTrades.length > 0
+                ? '訂單建立成功並產生成交'
+                : '訂單建立成功，目前沒有成交',
+        order,
+        trades: completedTrades
     })
 })
 
 app.listen(PORT, () => {
-    console.log(`NiouStock server running at http://localhost:${PORT}`)
+    console.log(
+        `NiouStock server running at http://localhost:${PORT}`
+    )
 })
