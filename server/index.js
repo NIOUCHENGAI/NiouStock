@@ -14,6 +14,7 @@ const stocks = [
         category: 'YouTube',
         price: 100.00,
         previousClose: 94.80,
+        referencePrice: 94.80,
         change: 5.20,
         changePercent: 5.49
     }
@@ -21,6 +22,122 @@ const stocks = [
 
 const orders = []
 const trades = []
+
+function getTickCents(priceCents) {
+    if (priceCents < 1000) {
+        return 1
+    }
+
+    if (priceCents < 5000) {
+        return 5
+    }
+
+    if (priceCents < 10000) {
+        return 10
+    }
+
+    if (priceCents < 50000) {
+        return 50
+    }
+
+    if (priceCents < 100000) {
+        return 100
+    }
+
+    return 500
+}
+
+function getTickSize(price) {
+    const priceCents = Math.round(price * 100)
+
+    return getTickCents(priceCents) / 100
+}
+
+function isValidStockPrice(price) {
+    if (!Number.isFinite(price) || price <= 0) {
+        return false
+    }
+
+    const priceCents = Math.round(price * 100)
+
+    if (
+        Math.abs(
+            price - priceCents / 100
+        ) > 0.0000001
+    ) {
+        return false
+    }
+
+    const tickCents = getTickCents(priceCents)
+
+    return priceCents % tickCents === 0
+}
+
+function getDailyPriceLimits(stock) {
+    const referenceCents =
+        Math.round(stock.referencePrice * 100)
+
+    const minimumTickCents =
+        getTickCents(referenceCents)
+
+    const tenPercentCents =
+        referenceCents / 10
+
+    let limitUpCents
+    let limitDownCents
+
+    if (tenPercentCents < minimumTickCents) {
+        limitUpCents =
+            referenceCents + minimumTickCents
+
+        limitDownCents = Math.max(
+            1,
+            referenceCents - minimumTickCents
+        )
+    } else {
+        limitUpCents = Math.floor(
+            referenceCents * 11 / 10
+        )
+
+        while (
+            limitUpCents > 0 &&
+            limitUpCents %
+                getTickCents(limitUpCents) !== 0
+        ) {
+            limitUpCents--
+        }
+
+        limitDownCents = Math.ceil(
+            referenceCents * 9 / 10
+        )
+
+        while (
+            limitDownCents %
+                getTickCents(limitDownCents) !== 0
+        ) {
+            limitDownCents++
+        }
+    }
+
+    return {
+        limitUp: limitUpCents / 100,
+        limitDown: limitDownCents / 100
+    }
+}
+
+function getStockData(stock) {
+    const {
+        limitUp,
+        limitDown
+    } = getDailyPriceLimits(stock)
+
+    return {
+        ...stock,
+        limitUp,
+        limitDown,
+        tickSize: getTickSize(stock.price)
+    }
+}
 
 function isOrderOpen(order) {
     return (
@@ -32,25 +149,12 @@ function isOrderOpen(order) {
 function updateOrderStatus(order) {
     if (order.remainingQuantity === 0) {
         order.status = 'filled'
-    } else if (order.remainingQuantity < order.quantity) {
+    } else if (
+        order.remainingQuantity < order.quantity
+    ) {
         order.status = 'partially_filled'
     } else {
         order.status = 'pending'
-    }
-}
-
-function getDailyPriceLimits(stock) {
-    const limitUp = Number(
-        (stock.previousClose * 1.1).toFixed(2)
-    )
-
-    const limitDown = Number(
-        (stock.previousClose * 0.9).toFixed(2)
-    )
-
-    return {
-        limitUp,
-        limitDown
     }
 }
 
@@ -104,12 +208,18 @@ function updateStockPrice(stock, price) {
     stock.price = price
 
     stock.change = Number(
-        (stock.price - stock.previousClose).toFixed(2)
+        (
+            stock.price -
+            stock.previousClose
+        ).toFixed(2)
     )
 
     stock.changePercent = Number(
         (
-            (stock.change / stock.previousClose) *
+            (
+                stock.change /
+                stock.previousClose
+            ) *
             100
         ).toFixed(2)
     )
@@ -119,7 +229,8 @@ function executeMatches(newOrder, stock) {
     const completedTrades = []
 
     while (newOrder.remainingQuantity > 0) {
-        const matchingOrder = findMatchingOrder(newOrder)
+        const matchingOrder =
+            findMatchingOrder(newOrder)
 
         if (!matchingOrder) {
             break
@@ -130,10 +241,14 @@ function executeMatches(newOrder, stock) {
             matchingOrder.remainingQuantity
         )
 
-        const tradePrice = matchingOrder.price
+        const tradePrice =
+            matchingOrder.price
 
-        newOrder.remainingQuantity -= tradeQuantity
-        matchingOrder.remainingQuantity -= tradeQuantity
+        newOrder.remainingQuantity -=
+            tradeQuantity
+
+        matchingOrder.remainingQuantity -=
+            tradeQuantity
 
         updateOrderStatus(newOrder)
         updateOrderStatus(matchingOrder)
@@ -151,13 +266,17 @@ function executeMatches(newOrder, stock) {
                 newOrder.side === 'sell'
                     ? newOrder.id
                     : matchingOrder.id,
-            createdAt: new Date().toISOString()
+            createdAt:
+                new Date().toISOString()
         }
 
         trades.push(trade)
         completedTrades.push(trade)
 
-        updateStockPrice(stock, tradePrice)
+        updateStockPrice(
+            stock,
+            tradePrice
+        )
     }
 
     updateOrderStatus(newOrder)
@@ -188,23 +307,32 @@ function buildOrderBook(stockCode) {
 
         targetMap.set(
             order.price,
-            currentQuantity + order.remainingQuantity
+            currentQuantity +
+                order.remainingQuantity
         )
     })
 
-    const buys = Array.from(buyMap.entries())
-        .map(([price, quantity]) => ({
-            price,
-            quantity
-        }))
-        .sort((a, b) => b.price - a.price)
+    const buys =
+        Array.from(buyMap.entries())
+            .map(([price, quantity]) => ({
+                price,
+                quantity
+            }))
+            .sort(
+                (a, b) =>
+                    b.price - a.price
+            )
 
-    const sells = Array.from(sellMap.entries())
-        .map(([price, quantity]) => ({
-            price,
-            quantity
-        }))
-        .sort((a, b) => a.price - b.price)
+    const sells =
+        Array.from(sellMap.entries())
+            .map(([price, quantity]) => ({
+                price,
+                quantity
+            }))
+            .sort(
+                (a, b) =>
+                    a.price - b.price
+            )
 
     return {
         stockCode,
@@ -220,12 +348,17 @@ app.get('/api', (req, res) => {
 })
 
 app.get('/api/stocks', (req, res) => {
-    res.json(stocks)
+    res.json(
+        stocks.map(stock =>
+            getStockData(stock)
+        )
+    )
 })
 
 app.get('/api/stocks/:code', (req, res) => {
     const stock = stocks.find(
-        item => item.code === req.params.code
+        item =>
+            item.code === req.params.code
     )
 
     if (!stock) {
@@ -234,7 +367,9 @@ app.get('/api/stocks/:code', (req, res) => {
         })
     }
 
-    res.json(stock)
+    res.json(
+        getStockData(stock)
+    )
 })
 
 app.get('/api/orders', (req, res) => {
@@ -247,7 +382,8 @@ app.get('/api/trades', (req, res) => {
 
 app.get('/api/trades/:code', (req, res) => {
     const stock = stocks.find(
-        item => item.code === req.params.code
+        item =>
+            item.code === req.params.code
     )
 
     if (!stock) {
@@ -257,9 +393,16 @@ app.get('/api/trades/:code', (req, res) => {
     }
 
     const stockTrades = trades
-        .filter(trade => trade.stockCode === req.params.code)
+        .filter(
+            trade =>
+                trade.stockCode ===
+                req.params.code
+        )
         .sort((a, b) => {
-            return new Date(b.createdAt) - new Date(a.createdAt)
+            return (
+                new Date(b.createdAt) -
+                new Date(a.createdAt)
+            )
         })
 
     res.json(stockTrades)
@@ -267,7 +410,8 @@ app.get('/api/trades/:code', (req, res) => {
 
 app.get('/api/orderbook/:code', (req, res) => {
     const stock = stocks.find(
-        item => item.code === req.params.code
+        item =>
+            item.code === req.params.code
     )
 
     if (!stock) {
@@ -276,7 +420,8 @@ app.get('/api/orderbook/:code', (req, res) => {
         })
     }
 
-    const orderBook = buildOrderBook(req.params.code)
+    const orderBook =
+        buildOrderBook(req.params.code)
 
     res.json(orderBook)
 })
@@ -299,14 +444,18 @@ app.post('/api/orders', (req, res) => {
         })
     }
 
-    if (side !== 'buy' && side !== 'sell') {
+    if (
+        side !== 'buy' &&
+        side !== 'sell'
+    ) {
         return res.status(400).json({
             message: '訂單方向錯誤'
         })
     }
 
     const orderPrice = Number(price)
-    const orderQuantity = Number(quantity)
+    const orderQuantity =
+        Number(quantity)
 
     if (
         !Number.isFinite(orderPrice) ||
@@ -323,6 +472,17 @@ app.post('/api/orders', (req, res) => {
     ) {
         return res.status(400).json({
             message: '數量必須大於 0'
+        })
+    }
+
+    if (
+        !isValidStockPrice(orderPrice)
+    ) {
+        return res.status(400).json({
+            message:
+                `委託價格不符合台股升降單位，目前此價格的升降單位為 ${getTickSize(orderPrice)} 元`,
+            tickSize:
+                getTickSize(orderPrice)
         })
     }
 
@@ -349,17 +509,20 @@ app.post('/api/orders', (req, res) => {
         side,
         price: orderPrice,
         quantity: orderQuantity,
-        remainingQuantity: orderQuantity,
+        remainingQuantity:
+            orderQuantity,
         status: 'pending',
-        createdAt: new Date().toISOString()
+        createdAt:
+            new Date().toISOString()
     }
 
     orders.push(order)
 
-    const completedTrades = executeMatches(
-        order,
-        stock
-    )
+    const completedTrades =
+        executeMatches(
+            order,
+            stock
+        )
 
     res.status(201).json({
         message:
@@ -372,7 +535,8 @@ app.post('/api/orders', (req, res) => {
 })
 
 app.delete('/api/orders/:id', (req, res) => {
-    const orderId = Number(req.params.id)
+    const orderId =
+        Number(req.params.id)
 
     const order = orders.find(
         item => item.id === orderId
@@ -386,7 +550,8 @@ app.delete('/api/orders/:id', (req, res) => {
 
     if (!isOrderOpen(order)) {
         return res.status(400).json({
-            message: '這筆訂單目前無法取消'
+            message:
+                '這筆訂單目前無法取消'
         })
     }
 
