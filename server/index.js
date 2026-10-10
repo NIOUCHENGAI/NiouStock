@@ -39,6 +39,21 @@ function updateOrderStatus(order) {
     }
 }
 
+function getDailyPriceLimits(stock) {
+    const limitUp = Number(
+        (stock.previousClose * 1.1).toFixed(2)
+    )
+
+    const limitDown = Number(
+        (stock.previousClose * 0.9).toFixed(2)
+    )
+
+    return {
+        limitUp,
+        limitDown
+    }
+}
+
 function findMatchingOrder(newOrder) {
     const candidates = orders.filter(order => {
         if (order.id === newOrder.id) {
@@ -290,15 +305,41 @@ app.post('/api/orders', (req, res) => {
         })
     }
 
-    if (!price || Number(price) <= 0) {
+    const orderPrice = Number(price)
+    const orderQuantity = Number(quantity)
+
+    if (
+        !Number.isFinite(orderPrice) ||
+        orderPrice <= 0
+    ) {
         return res.status(400).json({
             message: '價格必須大於 0'
         })
     }
 
-    if (!quantity || Number(quantity) <= 0) {
+    if (
+        !Number.isFinite(orderQuantity) ||
+        orderQuantity <= 0
+    ) {
         return res.status(400).json({
             message: '數量必須大於 0'
+        })
+    }
+
+    const {
+        limitUp,
+        limitDown
+    } = getDailyPriceLimits(stock)
+
+    if (
+        orderPrice > limitUp ||
+        orderPrice < limitDown
+    ) {
+        return res.status(400).json({
+            message:
+                `委託價格必須介於 ${limitDown.toFixed(2)} 與 ${limitUp.toFixed(2)} 之間`,
+            limitDown,
+            limitUp
         })
     }
 
@@ -306,9 +347,9 @@ app.post('/api/orders', (req, res) => {
         id: orders.length + 1,
         stockCode,
         side,
-        price: Number(price),
-        quantity: Number(quantity),
-        remainingQuantity: Number(quantity),
+        price: orderPrice,
+        quantity: orderQuantity,
+        remainingQuantity: orderQuantity,
         status: 'pending',
         createdAt: new Date().toISOString()
     }
