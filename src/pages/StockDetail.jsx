@@ -84,8 +84,10 @@ function StockDetail() {
             })
     }
 
-    useEffect(() => {
-        fetch(`http://localhost:3000/api/stocks/${code}`)
+    function loadStock() {
+        return fetch(
+            `http://localhost:3000/api/stocks/${code}`
+        )
             .then(response => {
                 if (!response.ok) {
                     throw new Error('找不到股票')
@@ -95,6 +97,13 @@ function StockDetail() {
             })
             .then(data => {
                 setStock(data)
+                return data
+            })
+    }
+
+    useEffect(() => {
+        loadStock()
+            .then(data => {
                 setPrice(data.price)
                 setLoading(false)
             })
@@ -153,13 +162,9 @@ function StockDetail() {
 
             setQuantity('')
 
-            const stockResponse = await fetch(
-                `http://localhost:3000/api/stocks/${code}`
-            )
+            const stockData = await loadStock()
 
-            const stockData = await stockResponse.json()
-
-            setStock(stockData)
+            setPrice(stockData.price)
 
             loadOrderBook()
             loadTrades()
@@ -238,6 +243,21 @@ function StockDetail() {
                         {stock.changePercent >= 0 ? '+' : ''}
                         {stock.changePercent.toFixed(2)}%
                         )
+                    </p>
+
+                    <p>
+                        參考價：
+                        ${stock.referencePrice.toFixed(2)}
+                    </p>
+
+                    <p>
+                        漲停：
+                        ${stock.limitUp.toFixed(2)}
+                    </p>
+
+                    <p>
+                        跌停：
+                        ${stock.limitDown.toFixed(2)}
                     </p>
                 </div>
 
@@ -396,13 +416,12 @@ function StockDetail() {
 
                         <input
                             type="number"
-                            min="0.01"
-                            step="0.01"
+                            min={stock.limitDown}
+                            max={stock.limitUp}
+                            step={stock.tickSize}
                             value={price}
                             onChange={(event) =>
-                                setPrice(
-                                    event.target.value
-                                )
+                                setPrice(event.target.value)
                             }
                         />
                     </label>
@@ -413,11 +432,10 @@ function StockDetail() {
                         <input
                             type="number"
                             min="1"
+                            step="1"
                             value={quantity}
                             onChange={(event) =>
-                                setQuantity(
-                                    event.target.value
-                                )
+                                setQuantity(event.target.value)
                             }
                             placeholder="輸入股數"
                         />
