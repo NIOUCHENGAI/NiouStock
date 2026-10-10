@@ -5,10 +5,13 @@ function StockDetail() {
     const { code } = useParams()
 
     const [stock, setStock] = useState(null)
+
     const [orderBook, setOrderBook] = useState({
         buys: [],
         sells: []
     })
+
+    const [trades, setTrades] = useState([])
 
     const [price, setPrice] = useState('')
     const [quantity, setQuantity] = useState('')
@@ -36,6 +39,23 @@ function StockDetail() {
             })
     }
 
+    function loadTrades() {
+        fetch(`http://localhost:3000/api/trades/${code}`)
+            .then(response => {
+                if (!response.ok) {
+                    throw new Error('取得成交紀錄失敗')
+                }
+
+                return response.json()
+            })
+            .then(data => {
+                setTrades(data)
+            })
+            .catch(() => {
+                setTrades([])
+            })
+    }
+
     useEffect(() => {
         fetch(`http://localhost:3000/api/stocks/${code}`)
             .then(response => {
@@ -56,6 +76,7 @@ function StockDetail() {
             })
 
         loadOrderBook()
+        loadTrades()
     }, [code])
 
     async function submitOrder(side) {
@@ -70,18 +91,21 @@ function StockDetail() {
         }
 
         try {
-            const response = await fetch('http://localhost:3000/api/orders', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json'
-                },
-                body: JSON.stringify({
-                    stockCode: stock.code,
-                    side,
-                    price: Number(price),
-                    quantity: Number(quantity)
-                })
-            })
+            const response = await fetch(
+                'http://localhost:3000/api/orders',
+                {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        stockCode: stock.code,
+                        side,
+                        price: Number(price),
+                        quantity: Number(quantity)
+                    })
+                }
+            )
 
             const data = await response.json()
 
@@ -107,7 +131,9 @@ function StockDetail() {
             const stockData = await stockResponse.json()
 
             setStock(stockData)
+
             loadOrderBook()
+            loadTrades()
         } catch {
             setMessage('無法連接交易伺服器')
         }
@@ -129,7 +155,9 @@ function StockDetail() {
         )
     }
 
-    const total = Number(quantity || 0) * Number(price || 0)
+    const total =
+        Number(quantity || 0) *
+        Number(price || 0)
 
     return (
         <div className="main">
@@ -221,29 +249,72 @@ function StockDetail() {
                 <hr />
 
                 <div>
+                    <h2>逐筆成交</h2>
+
+                    {trades.length === 0 && (
+                        <p>目前沒有成交紀錄</p>
+                    )}
+
+                    {trades.map(trade => {
+                        const time =
+                            new Date(
+                                trade.createdAt
+                            ).toLocaleTimeString()
+
+                        return (
+                            <div key={trade.id}>
+                                <span>
+                                    {time}
+                                </span>
+
+                                {' '}
+
+                                <span>
+                                    ${trade.price.toFixed(2)}
+                                </span>
+
+                                {' '}
+
+                                <span>
+                                    {trade.quantity} 股
+                                </span>
+                            </div>
+                        )
+                    })}
+                </div>
+
+                <hr />
+
+                <div>
                     <h2>限價交易</h2>
 
                     <label>
                         掛單價格
+
                         <input
                             type="number"
                             min="0.01"
                             step="0.01"
                             value={price}
                             onChange={(event) =>
-                                setPrice(event.target.value)
+                                setPrice(
+                                    event.target.value
+                                )
                             }
                         />
                     </label>
 
                     <label>
                         數量
+
                         <input
                             type="number"
                             min="1"
                             value={quantity}
                             onChange={(event) =>
-                                setQuantity(event.target.value)
+                                setQuantity(
+                                    event.target.value
+                                )
                             }
                             placeholder="輸入股數"
                         />
@@ -254,11 +325,19 @@ function StockDetail() {
                     </p>
 
                     <div>
-                        <button onClick={() => submitOrder('buy')}>
+                        <button
+                            onClick={() =>
+                                submitOrder('buy')
+                            }
+                        >
                             買入
                         </button>
 
-                        <button onClick={() => submitOrder('sell')}>
+                        <button
+                            onClick={() =>
+                                submitOrder('sell')
+                            }
+                        >
                             賣出
                         </button>
                     </div>
