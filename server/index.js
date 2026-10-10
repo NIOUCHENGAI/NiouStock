@@ -230,6 +230,26 @@ app.get('/api/trades', (req, res) => {
     res.json(trades)
 })
 
+app.get('/api/trades/:code', (req, res) => {
+    const stock = stocks.find(
+        item => item.code === req.params.code
+    )
+
+    if (!stock) {
+        return res.status(404).json({
+            message: '找不到這支股票'
+        })
+    }
+
+    const stockTrades = trades
+        .filter(trade => trade.stockCode === req.params.code)
+        .sort((a, b) => {
+            return new Date(b.createdAt) - new Date(a.createdAt)
+        })
+
+    res.json(stockTrades)
+})
+
 app.get('/api/orderbook/:code', (req, res) => {
     const stock = stocks.find(
         item => item.code === req.params.code
