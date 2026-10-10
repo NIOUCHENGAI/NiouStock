@@ -12,6 +12,7 @@ function StockDetail() {
     })
 
     const [trades, setTrades] = useState([])
+    const [openOrders, setOpenOrders] = useState([])
 
     const [price, setPrice] = useState('')
     const [quantity, setQuantity] = useState('')
@@ -56,6 +57,33 @@ function StockDetail() {
             })
     }
 
+    function loadOpenOrders() {
+        fetch('http://localhost:3000/api/orders')
+            .then(response => {
+                if (!response.ok) {
+                    throw new Error('取得掛單失敗')
+                }
+
+                return response.json()
+            })
+            .then(data => {
+                const filteredOrders = data.filter(order => {
+                    return (
+                        order.stockCode === code &&
+                        (
+                            order.status === 'pending' ||
+                            order.status === 'partially_filled'
+                        )
+                    )
+                })
+
+                setOpenOrders(filteredOrders)
+            })
+            .catch(() => {
+                setOpenOrders([])
+            })
+    }
+
     useEffect(() => {
         fetch(`http://localhost:3000/api/stocks/${code}`)
             .then(response => {
@@ -77,6 +105,7 @@ function StockDetail() {
 
         loadOrderBook()
         loadTrades()
+        loadOpenOrders()
     }, [code])
 
     async function submitOrder(side) {
@@ -134,8 +163,34 @@ function StockDetail() {
 
             loadOrderBook()
             loadTrades()
+            loadOpenOrders()
         } catch {
             setMessage('無法連接交易伺服器')
+        }
+    }
+
+    async function cancelOrder(orderId) {
+        try {
+            const response = await fetch(
+                `http://localhost:3000/api/orders/${orderId}`,
+                {
+                    method: 'DELETE'
+                }
+            )
+
+            const data = await response.json()
+
+            if (!response.ok) {
+                setMessage(data.message)
+                return
+            }
+
+            setMessage('訂單取消成功')
+
+            loadOrderBook()
+            loadOpenOrders()
+        } catch {
+            setMessage('取消訂單失敗')
         }
     }
 
@@ -242,6 +297,54 @@ function StockDetail() {
                             <span>
                                 {order.quantity} 股
                             </span>
+                        </div>
+                    ))}
+                </div>
+
+                <hr />
+
+                <div>
+                    <h2>目前掛單</h2>
+
+                    {openOrders.length === 0 && (
+                        <p>目前沒有掛單</p>
+                    )}
+
+                    {openOrders.map(order => (
+                        <div key={order.id}>
+                            <span>
+                                #{order.id}
+                            </span>
+
+                            {' '}
+
+                            <span>
+                                {order.side === 'buy'
+                                    ? '買入'
+                                    : '賣出'}
+                            </span>
+
+                            {' '}
+
+                            <span>
+                                ${order.price.toFixed(2)}
+                            </span>
+
+                            {' '}
+
+                            <span>
+                                剩餘 {order.remainingQuantity} 股
+                            </span>
+
+                            {' '}
+
+                            <button
+                                onClick={() =>
+                                    cancelOrder(order.id)
+                                }
+                            >
+                                取消
+                            </button>
                         </div>
                     ))}
                 </div>
