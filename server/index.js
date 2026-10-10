@@ -330,6 +330,33 @@ app.post('/api/orders', (req, res) => {
     })
 })
 
+app.delete('/api/orders/:id', (req, res) => {
+    const orderId = Number(req.params.id)
+
+    const order = orders.find(
+        item => item.id === orderId
+    )
+
+    if (!order) {
+        return res.status(404).json({
+            message: '找不到這筆訂單'
+        })
+    }
+
+    if (!isOrderOpen(order)) {
+        return res.status(400).json({
+            message: '這筆訂單目前無法取消'
+        })
+    }
+
+    order.status = 'cancelled'
+
+    res.json({
+        message: '訂單取消成功',
+        order
+    })
+})
+
 app.listen(PORT, () => {
     console.log(
         `NiouStock server running at http://localhost:${PORT}`
