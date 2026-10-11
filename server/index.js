@@ -475,6 +475,12 @@ app.post('/api/orders', (req, res) => {
         })
     }
 
+    if (!Number.isInteger(orderQuantity)) {
+        return res.status(400).json({
+            message: '股數必須是整數'
+        })
+    }
+
     if (
         !isValidStockPrice(orderPrice)
     ) {
