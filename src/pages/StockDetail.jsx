@@ -20,6 +20,83 @@ function StockDetail() {
     const [loading, setLoading] = useState(true)
     const [error, setError] = useState('')
 
+    function getTickSizeForPrice(value) {
+        if (value < 10) {
+            return 0.01
+        }
+
+        if (value < 50) {
+            return 0.05
+        }
+
+        if (value < 100) {
+            return 0.1
+        }
+
+        if (value < 500) {
+            return 0.5
+        }
+
+        if (value < 1000) {
+            return 1
+        }
+
+        return 5
+    }
+
+    function roundPrice(value) {
+        return Number(value.toFixed(2))
+    }
+
+    function increasePrice() {
+        const currentPrice = Number(price)
+
+        if (!Number.isFinite(currentPrice)) {
+            return
+        }
+
+        const tick =
+            getTickSizeForPrice(currentPrice)
+
+        const nextPrice =
+            roundPrice(currentPrice + tick)
+
+        if (nextPrice > stock.limitUp) {
+            setPrice(stock.limitUp)
+            return
+        }
+
+        setPrice(nextPrice)
+    }
+
+    function decreasePrice() {
+        const currentPrice = Number(price)
+
+        if (!Number.isFinite(currentPrice)) {
+            return
+        }
+
+        const priceBelow =
+            currentPrice - 0.000001
+
+        const tick =
+            getTickSizeForPrice(priceBelow)
+
+        const nextPrice =
+            roundPrice(currentPrice - tick)
+
+        if (nextPrice < stock.limitDown) {
+            setPrice(stock.limitDown)
+            return
+        }
+
+        setPrice(nextPrice)
+    }
+
+    function selectOrderPrice(orderPrice) {
+        setPrice(orderPrice)
+    }
+
     function loadOrderBook() {
         fetch(`http://localhost:3000/api/orderbook/${code}`)
             .then(response => {
@@ -219,6 +296,15 @@ function StockDetail() {
         Number(quantity || 0) *
         Number(price || 0)
 
+    const topBuys =
+        orderBook.buys.slice(0, 5)
+
+    const topSells =
+        orderBook.sells.slice(0, 5)
+
+    const displaySells =
+        [...topSells].reverse()
+
     return (
         <div className="main">
             <section className="welcome">
@@ -264,43 +350,51 @@ function StockDetail() {
                 <hr />
 
                 <div>
-                    <h2>委託簿</h2>
+                    <h2>五檔</h2>
 
-                    <h3>賣單</h3>
-
-                    {orderBook.sells.length === 0 && (
+                    {displaySells.length === 0 && (
                         <p>目前沒有賣單</p>
                     )}
 
-                    {orderBook.sells.map((order, index) => (
-                        <div key={`sell-${order.price}`}>
-                            <span>
-                                賣{index + 1}
-                            </span>
+                    {displaySells.map((order, index) => {
+                        const level =
+                            displaySells.length - index
 
-                            {' '}
+                        return (
+                            <div key={`sell-${order.price}`}>
+                                <span>
+                                    賣{level}
+                                </span>
 
-                            <span>
-                                ${order.price.toFixed(2)}
-                            </span>
+                                {' '}
 
-                            {' '}
+                                <button
+                                    type="button"
+                                    onClick={() =>
+                                        selectOrderPrice(
+                                            order.price
+                                        )
+                                    }
+                                >
+                                    ${order.price.toFixed(2)}
+                                </button>
 
-                            <span>
-                                {order.quantity} 股
-                            </span>
-                        </div>
-                    ))}
+                                {' '}
+
+                                <span>
+                                    {order.quantity} 股
+                                </span>
+                            </div>
+                        )
+                    })}
 
                     <hr />
 
-                    <h3>買單</h3>
-
-                    {orderBook.buys.length === 0 && (
+                    {topBuys.length === 0 && (
                         <p>目前沒有買單</p>
                     )}
 
-                    {orderBook.buys.map((order, index) => (
+                    {topBuys.map((order, index) => (
                         <div key={`buy-${order.price}`}>
                             <span>
                                 買{index + 1}
@@ -308,9 +402,16 @@ function StockDetail() {
 
                             {' '}
 
-                            <span>
+                            <button
+                                type="button"
+                                onClick={() =>
+                                    selectOrderPrice(
+                                        order.price
+                                    )
+                                }
+                            >
                                 ${order.price.toFixed(2)}
-                            </span>
+                            </button>
 
                             {' '}
 
@@ -413,18 +514,32 @@ function StockDetail() {
 
                     <label>
                         掛單價格
+                    </label>
+
+                    <div>
+                        <button
+                            type="button"
+                            onClick={decreasePrice}
+                        >
+                            −
+                        </button>
 
                         <input
-                            type="number"
-                            min={stock.limitDown}
-                            max={stock.limitUp}
-                            step={stock.tickSize}
+                            type="text"
+                            inputMode="decimal"
                             value={price}
                             onChange={(event) =>
                                 setPrice(event.target.value)
                             }
                         />
-                    </label>
+
+                        <button
+                            type="button"
+                            onClick={increasePrice}
+                        >
+                            ＋
+                        </button>
+                    </div>
 
                     <label>
                         數量
