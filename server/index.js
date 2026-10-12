@@ -20,6 +20,17 @@ const stocks = [
     }
 ]
 
+const users = [
+    {
+        id: 1,
+        name: 'Test User',
+        cash: 1000000,
+        holdings: {
+            YT001: 2000
+        }
+    }
+]
+
 const orders = []
 const trades = []
 
@@ -136,6 +147,52 @@ function getStockData(stock) {
         limitUp,
         limitDown,
         tickSize: getTickSize(stock.price)
+    }
+}
+
+function getAccountData(user) {
+    const holdings = Object.entries(
+        user.holdings
+    ).map(([stockCode, quantity]) => {
+        const stock = stocks.find(
+            item => item.code === stockCode
+        )
+
+        const price =
+            stock ? stock.price : 0
+
+        return {
+            stockCode,
+            quantity,
+            price,
+            marketValue:
+                Number(
+                    (price * quantity).toFixed(2)
+                )
+        }
+    })
+
+    const holdingsValue =
+        holdings.reduce(
+            (total, holding) =>
+                total + holding.marketValue,
+            0
+        )
+
+    return {
+        id: user.id,
+        name: user.name,
+        cash: user.cash,
+        holdings,
+        holdingsValue:
+            Number(holdingsValue.toFixed(2)),
+        totalAssets:
+            Number(
+                (
+                    user.cash +
+                    holdingsValue
+                ).toFixed(2)
+            )
     }
 }
 
@@ -345,6 +402,14 @@ app.get('/api', (req, res) => {
     res.json({
         message: 'NiouStock API 正常運作'
     })
+})
+
+app.get('/api/account', (req, res) => {
+    const user = users[0]
+
+    res.json(
+        getAccountData(user)
+    )
 })
 
 app.get('/api/stocks', (req, res) => {
