@@ -28,6 +28,14 @@ const users = [
         holdings: {
             YT001: 2000
         }
+    },
+    {
+        id: 2,
+        name: 'Test User 2',
+        cash: 1000000,
+        holdings: {
+            YT001: 2000
+        }
     }
 ]
 
@@ -70,6 +78,8 @@ function isValidStockPrice(price) {
     }
 
     const priceCents = Math.round(price * 100)
+
+    if (!Number.isSafeInteger(priceCents)) return false
 
     if (
         Math.abs(
@@ -151,6 +161,10 @@ function getStockData(stock) {
 }
 
 function getAccountData(user) {
+    // Derive reservations from open remainders, so fills/cancellations release them automatically.
+    const reservedCashCents = orders
+        .filter(order => order.userId === user.id && order.side === 'buy' && isOrderOpen(order))
+        .reduce((sum, order) => sum + Math.round(order.price * 100) * order.remainingQuantity, 0)
     const holdings = Object.entries(
         user.holdings
     ).map(([stockCode, quantity]) => {
@@ -161,9 +175,16 @@ function getAccountData(user) {
         const price =
             stock ? stock.price : 0
 
+        const reservedQuantity = orders
+            .filter(order => order.userId === user.id && order.stockCode === stockCode && order.side === 'sell' && isOrderOpen(order))
+            .reduce((sum, order) => sum + order.remainingQuantity, 0)
+
         return {
             stockCode,
             quantity,
+            availableQuantity: quantity - reservedQuantity,
+            reservedQuantity,
+            currentPrice: price,
             price,
             marketValue:
                 Number(
@@ -183,9 +204,13 @@ function getAccountData(user) {
         id: user.id,
         name: user.name,
         cash: user.cash,
+        reservedCash: reservedCashCents / 100,
+        availableCash: (Math.round(user.cash * 100) - reservedCashCents) / 100,
         holdings,
         holdingsValue:
-            Number(holdingsValue.toFixed(2)),
+            Number(
+                holdingsValue.toFixed(2)
+            ),
         totalAssets:
             Number(
                 (
@@ -301,6 +326,16 @@ function executeMatches(newOrder, stock) {
         const tradePrice =
             matchingOrder.price
 
+        const buyOrder = newOrder.side === 'buy' ? newOrder : matchingOrder
+        const sellOrder = newOrder.side === 'sell' ? newOrder : matchingOrder
+        const buyer = users.find(user => user.id === buyOrder.userId)
+        const seller = users.find(user => user.id === sellOrder.userId)
+        const amountCents = Math.round(tradePrice * 100) * tradeQuantity
+        buyer.cash = (Math.round(buyer.cash * 100) - amountCents) / 100
+        seller.cash = (Math.round(seller.cash * 100) + amountCents) / 100
+        buyer.holdings[stock.code] = (buyer.holdings[stock.code] || 0) + tradeQuantity
+        seller.holdings[stock.code] -= tradeQuantity
+
         newOrder.remainingQuantity -=
             tradeQuantity
 
@@ -323,6 +358,14 @@ function executeMatches(newOrder, stock) {
                 newOrder.side === 'sell'
                     ? newOrder.id
                     : matchingOrder.id,
+            buyerUserId:
+                newOrder.side === 'buy'
+                    ? newOrder.userId
+                    : matchingOrder.userId,
+            sellerUserId:
+                newOrder.side === 'sell'
+                    ? newOrder.userId
+                    : matchingOrder.userId,
             createdAt:
                 new Date().toISOString()
         }
@@ -412,6 +455,14 @@ app.get('/api/account', (req, res) => {
     )
 })
 
+app.get('/api/accounts', (req, res) => res.json(users.map(getAccountData)))
+
+app.get('/api/accounts/:id', (req, res) => {
+    const user = users.find(user => user.id === Number(req.params.id))
+    if (!user) return res.status(404).json({ message: '找不到這個使用者' })
+    res.json(getAccountData(user))
+})
+
 app.get('/api/stocks', (req, res) => {
     res.json(
         stocks.map(stock =>
@@ -438,7 +489,8 @@ app.get('/api/stocks/:code', (req, res) => {
 })
 
 app.get('/api/orders', (req, res) => {
-    res.json(orders)
+    const userId = Number(req.query.userId || 1)
+    res.json(orders.filter(order => order.userId === userId))
 })
 
 app.get('/api/trades', (req, res) => {
@@ -496,8 +548,20 @@ app.post('/api/orders', (req, res) => {
         stockCode,
         side,
         price,
-        quantity
+        quantity,
+        userId = 1
     } = req.body
+
+    const user = users.find(
+        item =>
+            item.id === Number(userId)
+    )
+
+    if (!user) {
+        return res.status(404).json({
+            message: '找不到這個使用者'
+        })
+    }
 
     const stock = stocks.find(
         item => item.code === stockCode
@@ -518,7 +582,7 @@ app.post('/api/orders', (req, res) => {
         })
     }
 
-    const orderPrice = Number(price)
+    let orderPrice = Number(price)
     const orderQuantity =
         Number(quantity)
 
@@ -540,7 +604,7 @@ app.post('/api/orders', (req, res) => {
         })
     }
 
-    if (!Number.isInteger(orderQuantity)) {
+    if (!Number.isSafeInteger(orderQuantity)) {
         return res.status(400).json({
             message: '股數必須是整數'
         })
@@ -556,6 +620,10 @@ app.post('/api/orders', (req, res) => {
                 getTickSize(orderPrice)
         })
     }
+
+    // Normalize immediately after validation; no downstream logic sees the raw input.
+    const orderPriceCents = Math.round(orderPrice * 100)
+    orderPrice = orderPriceCents / 100
 
     const {
         limitUp,
@@ -574,8 +642,31 @@ app.post('/api/orders', (req, res) => {
         })
     }
 
+    const crossesOwnOrder = orders.some(order =>
+        order.userId === user.id && order.stockCode === stockCode &&
+        order.side !== side && isOrderOpen(order) && order.remainingQuantity > 0 &&
+        (side === 'buy' ? order.price <= orderPrice : order.price >= orderPrice)
+    )
+    if (crossesOwnOrder) {
+        return res.status(400).json({ message: '新訂單會與你自己的反向掛單交叉，請先取消原掛單' })
+    }
+
+    const account = getAccountData(user)
+    const requiredCents = orderPriceCents * orderQuantity
+    if (!Number.isSafeInteger(requiredCents)) {
+        return res.status(400).json({ message: '訂單金額超出安全範圍' })
+    }
+    if (side === 'buy' && requiredCents > Math.round(account.availableCash * 100)) {
+        return res.status(400).json({ message: `可用現金不足，目前可用 ${account.availableCash.toFixed(2)}` })
+    }
+    const holding = account.holdings.find(holding => holding.stockCode === stockCode)
+    if (side === 'sell' && orderQuantity > (holding?.availableQuantity || 0)) {
+        return res.status(400).json({ message: `可用持股不足，目前可用 ${holding?.availableQuantity || 0} 股` })
+    }
+
     const order = {
         id: orders.length + 1,
+        userId: user.id,
         stockCode,
         side,
         price: orderPrice,
@@ -619,6 +710,10 @@ app.delete('/api/orders/:id', (req, res) => {
         })
     }
 
+    if (order.userId !== Number(req.query.userId || 1)) {
+        return res.status(403).json({ message: '只能取消自己的訂單' })
+    }
+
     if (!isOrderOpen(order)) {
         return res.status(400).json({
             message:
@@ -634,8 +729,10 @@ app.delete('/api/orders/:id', (req, res) => {
     })
 })
 
-app.listen(PORT, () => {
+if (require.main === module) app.listen(PORT, () => {
     console.log(
         `NiouStock server running at http://localhost:${PORT}`
     )
 })
+
+module.exports = { app, getTickCents, isValidStockPrice, getDailyPriceLimits }

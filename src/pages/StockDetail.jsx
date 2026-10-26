@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { useParams } from 'react-router-dom'
+import { stepPrice } from '../priceSteps.mjs'
 
 function StockDetail() {
     const { code } = useParams()
@@ -13,6 +14,21 @@ function StockDetail() {
 
     const [trades, setTrades] = useState([])
     const [openOrders, setOpenOrders] = useState([])
+    const [account, setAccount] = useState(null)
+    const [busy, setBusy] = useState(false)
+
+    async function loadAccount() {
+        const response = await fetch('http://localhost:3000/api/account')
+        if (!response.ok) throw new Error('無法取得帳戶資料')
+        setAccount(await response.json())
+    }
+
+    async function refreshAll() {
+        const [stockData] = await Promise.all([
+            loadStock(), loadAccount(), loadOrderBook(), loadTrades(), loadOpenOrders()
+        ])
+        return stockData
+    }
 
     const [price, setPrice] = useState('')
     const [quantity, setQuantity] = useState('')
@@ -20,77 +36,14 @@ function StockDetail() {
     const [loading, setLoading] = useState(true)
     const [error, setError] = useState('')
 
-    function getTickSizeForPrice(value) {
-        if (value < 10) {
-            return 0.01
-        }
-
-        if (value < 50) {
-            return 0.05
-        }
-
-        if (value < 100) {
-            return 0.1
-        }
-
-        if (value < 500) {
-            return 0.5
-        }
-
-        if (value < 1000) {
-            return 1
-        }
-
-        return 5
-    }
-
-    function roundPrice(value) {
-        return Number(value.toFixed(2))
-    }
-
     function increasePrice() {
-        const currentPrice = Number(price)
-
-        if (!Number.isFinite(currentPrice)) {
-            return
-        }
-
-        const tick =
-            getTickSizeForPrice(currentPrice)
-
-        const nextPrice =
-            roundPrice(currentPrice + tick)
-
-        if (nextPrice > stock.limitUp) {
-            setPrice(stock.limitUp)
-            return
-        }
-
-        setPrice(nextPrice)
+        const nextPrice = stepPrice(price, 1, stock.limitDown, stock.limitUp)
+        if (nextPrice !== null) setPrice(nextPrice)
     }
 
     function decreasePrice() {
-        const currentPrice = Number(price)
-
-        if (!Number.isFinite(currentPrice)) {
-            return
-        }
-
-        const priceBelow =
-            currentPrice - 0.000001
-
-        const tick =
-            getTickSizeForPrice(priceBelow)
-
-        const nextPrice =
-            roundPrice(currentPrice - tick)
-
-        if (nextPrice < stock.limitDown) {
-            setPrice(stock.limitDown)
-            return
-        }
-
-        setPrice(nextPrice)
+        const nextPrice = stepPrice(price, -1, stock.limitDown, stock.limitUp)
+        if (nextPrice !== null) setPrice(nextPrice)
     }
 
     function selectOrderPrice(orderPrice) {
@@ -98,7 +51,7 @@ function StockDetail() {
     }
 
     function loadOrderBook() {
-        fetch(`http://localhost:3000/api/orderbook/${code}`)
+        return fetch(`http://localhost:3000/api/orderbook/${code}`)
             .then(response => {
                 if (!response.ok) {
                     throw new Error('取得訂單簿失敗')
@@ -109,16 +62,17 @@ function StockDetail() {
             .then(data => {
                 setOrderBook(data)
             })
-            .catch(() => {
+            .catch(error => {
                 setOrderBook({
                     buys: [],
                     sells: []
                 })
+                throw error
             })
     }
 
     function loadTrades() {
-        fetch(`http://localhost:3000/api/trades/${code}`)
+        return fetch(`http://localhost:3000/api/trades/${code}`)
             .then(response => {
                 if (!response.ok) {
                     throw new Error('取得成交紀錄失敗')
@@ -129,13 +83,14 @@ function StockDetail() {
             .then(data => {
                 setTrades(data)
             })
-            .catch(() => {
+            .catch(error => {
                 setTrades([])
+                throw error
             })
     }
 
     function loadOpenOrders() {
-        fetch('http://localhost:3000/api/orders')
+        return fetch('http://localhost:3000/api/orders?userId=1')
             .then(response => {
                 if (!response.ok) {
                     throw new Error('取得掛單失敗')
@@ -146,7 +101,7 @@ function StockDetail() {
             .then(data => {
                 const filteredOrders = data.filter(order => {
                     return (
-                        order.stockCode === code &&
+                        order.userId === 1 && order.stockCode === code &&
                         (
                             order.status === 'pending' ||
                             order.status === 'partially_filled'
@@ -156,8 +111,9 @@ function StockDetail() {
 
                 setOpenOrders(filteredOrders)
             })
-            .catch(() => {
+            .catch(error => {
                 setOpenOrders([])
+                throw error
             })
     }
 
@@ -179,7 +135,9 @@ function StockDetail() {
     }
 
     useEffect(() => {
-        loadStock()
+        setLoading(true)
+        setError('')
+        refreshAll()
             .then(data => {
                 setPrice(data.price)
                 setLoading(false)
@@ -189,13 +147,11 @@ function StockDetail() {
                 setLoading(false)
             })
 
-        loadOrderBook()
-        loadTrades()
-        loadOpenOrders()
     }, [code])
 
     async function submitOrder(side) {
-        if (!price || Number(price) <= 0) {
+        if (busy) return
+        if (!price || !Number.isFinite(Number(price)) || Number(price) <= 0) {
             setMessage('請輸入有效的價格')
             return
         }
@@ -205,6 +161,24 @@ function StockDetail() {
             return
         }
 
+        if (!Number.isSafeInteger(Number(quantity))) {
+            setMessage('股數必須為正整數')
+            return
+        }
+        if (!account) {
+            setMessage('帳戶資料尚未載入，請重新整理')
+            return
+        }
+        const holding = account.holdings.find(item => item.stockCode === code)
+        if (side === 'buy' && Number(price) * Number(quantity) > account.availableCash) {
+            setMessage('可用現金不足（已扣除掛單保留資金）')
+            return
+        }
+        if (side === 'sell' && Number(quantity) > (holding?.availableQuantity || 0)) {
+            setMessage('可用持股不足（已扣除掛單保留股數）')
+            return
+        }
+        setBusy(true)
         try {
             const response = await fetch(
                 'http://localhost:3000/api/orders',
@@ -214,6 +188,7 @@ function StockDetail() {
                         'Content-Type': 'application/json'
                     },
                     body: JSON.stringify({
+                        userId: 1,
                         stockCode: stock.code,
                         side,
                         price: Number(price),
@@ -239,22 +214,23 @@ function StockDetail() {
 
             setQuantity('')
 
-            const stockData = await loadStock()
+            const stockData = await refreshAll()
 
             setPrice(stockData.price)
 
-            loadOrderBook()
-            loadTrades()
-            loadOpenOrders()
         } catch {
-            setMessage('無法連接交易伺服器')
+            setMessage('交易或資料更新失敗，請重新整理確認訂單狀態')
+        } finally {
+            setBusy(false)
         }
     }
 
     async function cancelOrder(orderId) {
+        if (busy) return
+        setBusy(true)
         try {
             const response = await fetch(
-                `http://localhost:3000/api/orders/${orderId}`,
+                `http://localhost:3000/api/orders/${orderId}?userId=1`,
                 {
                     method: 'DELETE'
                 }
@@ -269,10 +245,15 @@ function StockDetail() {
 
             setMessage('訂單取消成功')
 
-            loadOrderBook()
-            loadOpenOrders()
+            try {
+                await refreshAll()
+            } catch {
+                setMessage('訂單取消成功；資料更新失敗，請重新整理')
+            }
         } catch {
             setMessage('取消訂單失敗')
+        } finally {
+            setBusy(false)
         }
     }
 
@@ -314,6 +295,11 @@ function StockDetail() {
             </section>
 
             <section className="market-section">
+                {account && <div aria-label="測試帳戶">
+                    <h2>{account.name}</h2>
+                    <p>可用現金：${account.availableCash.toFixed(2)} ｜ 保留現金：${account.reservedCash.toFixed(2)}</p>
+                    <p>{code} 持股：{account.holdings.find(item => item.stockCode === code)?.quantity || 0} 股 ｜ 可用持股：{account.holdings.find(item => item.stockCode === code)?.availableQuantity || 0} 股</p>
+                </div>}
                 <div>
                     <p>目前價格</p>
 
@@ -460,6 +446,7 @@ function StockDetail() {
                             {' '}
 
                             <button
+                                disabled={busy}
                                 onClick={() =>
                                     cancelOrder(order.id)
                                 }
@@ -562,6 +549,7 @@ function StockDetail() {
 
                     <div>
                         <button
+                            disabled={busy}
                             onClick={() =>
                                 submitOrder('buy')
                             }
@@ -570,6 +558,7 @@ function StockDetail() {
                         </button>
 
                         <button
+                            disabled={busy}
                             onClick={() =>
                                 submitOrder('sell')
                             }
