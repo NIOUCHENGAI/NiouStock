@@ -1,6 +1,9 @@
 import { useEffect, useRef, useState } from 'react'
 import { createChart, CandlestickSeries, CrosshairMode } from 'lightweight-charts'
-import { chartChange, formatChartTime, toChartCandle } from '../chartData.mjs'
+import { chartChange, formatChartTime, toChartCandle, initialRightOffset } from '../chartData.mjs'
+
+const DEFAULT_BAR_SPACING = 9
+const DEFAULT_RIGHT_OFFSET = 3
 
 export default function CandleChart({ candles, interval, datasetKey, loading, error }) {
     const host = useRef(null)
@@ -8,7 +11,7 @@ export default function CandleChart({ candles, interval, datasetKey, loading, er
     const current = useRef({ candles, interval })
     const history = useRef([])
     const activeKey = useRef(null)
-    const needsFit = useRef(true)
+    const needsViewportReset = useRef(true)
     const [hovered, setHovered] = useState(null)
     current.current = { candles, interval }
 
@@ -22,7 +25,7 @@ export default function CandleChart({ candles, interval, datasetKey, loading, er
             crosshair: { mode: CrosshairMode.Normal },
             handleScroll: { mouseWheel: false, pressedMouseMove: true, horzTouchDrag: true, vertTouchDrag: false },
             handleScale: { mouseWheel: true, pinch: true, axisPressedMouseMove: { time: true, price: true }, axisDoubleClickReset: true },
-            timeScale: { timeVisible: true, secondsVisible: false, shiftVisibleRangeOnNewBar: false,
+            timeScale: { barSpacing: DEFAULT_BAR_SPACING, rightOffset: DEFAULT_RIGHT_OFFSET, timeVisible: true, secondsVisible: false, shiftVisibleRangeOnNewBar: false,
                 tickMarkFormatter: time => formatChartTime(time, current.current.interval, true) },
             localization: { locale: 'zh-TW', timeFormatter: time => formatChartTime(time, current.current.interval) }
         })
@@ -46,7 +49,7 @@ export default function CandleChart({ candles, interval, datasetKey, loading, er
         element.addEventListener('wheel', wheel, { passive: false })
         api.current = { chart, series }
         history.current = []
-        needsFit.current = true
+        needsViewportReset.current = true
         return () => {
             element.removeEventListener('wheel', wheel)
             observer.disconnect()
@@ -61,7 +64,7 @@ export default function CandleChart({ candles, interval, datasetKey, loading, er
         const { chart, series } = api.current
         if (activeKey.current !== datasetKey) {
             activeKey.current = datasetKey
-            needsFit.current = true
+            needsViewportReset.current = true
             history.current = []
             series.setData([])
             setHovered(null)
@@ -76,9 +79,14 @@ export default function CandleChart({ candles, interval, datasetKey, loading, er
         } else {
             series.setData(candles.map(toChartCandle))
         }
-        if (needsFit.current && candles.length) {
-            chart.timeScale().fitContent()
-            needsFit.current = false
+        if (needsViewportReset.current) {
+            // Reset only after the new interval snapshot finishes, even when empty.
+            // Use plot width (excluding the price axis) to leave spare slots on the right.
+            const timeScale = chart.timeScale()
+            const rightOffset = initialRightOffset(timeScale.width(), candles.length, DEFAULT_BAR_SPACING, DEFAULT_RIGHT_OFFSET)
+            timeScale.applyOptions({ barSpacing: DEFAULT_BAR_SPACING, rightOffset })
+            timeScale.scrollToPosition(rightOffset, false)
+            needsViewportReset.current = false
         } else if (range && candles.length) {
             chart.timeScale().setVisibleLogicalRange(range)
         }

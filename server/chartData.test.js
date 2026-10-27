@@ -44,3 +44,23 @@ test('snapshot: optional candle handler omitted avoids duplicate candle request'
     }, () => true)
     assert.deepEqual(paths, ['/stocks/YT001'])
 })
+
+test('chart initial placement: sparse candles align left at fixed spacing', async () => {
+    const { initialRightOffset } = await import('../src/chartData.mjs')
+    for (const width of [360, 720, 1000]) {
+        for (const count of [1, 2, 5]) {
+            const offset = initialRightOffset(width, count)
+            assert.equal(offset, width / 9 - count)
+            // Occupied candle slots and blank slots use the original 9px spacing.
+            assert.ok(Math.abs((count + offset) * 9 - width) < 0.000001)
+        }
+    }
+})
+test('chart initial placement: dense datasets show latest segment with trailing space', async () => {
+    const { initialRightOffset } = await import('../src/chartData.mjs')
+    assert.equal(initialRightOffset(720, 100), 3)
+    assert.equal(initialRightOffset(720, 80), 3)
+    assert.equal(initialRightOffset(360, 1000), 3)
+    assert.equal(initialRightOffset(0, 5), 3)
+    assert.equal(initialRightOffset(720, 0), 80)
+})

@@ -24,3 +24,10 @@ export function formatChartTime(time, interval, axis = false) {
         ...(interval !== '1d' ? { hour: '2-digit', minute: '2-digit' } : {})
     }).format(date)
 }
+
+// In sparse datasets, candle slots plus right-side blank slots fill the plot.
+// Dense datasets instead show the latest bars with a small trailing margin.
+export function initialRightOffset(plotWidth, candleCount, barSpacing = 9, trailingSlots = 3) {
+    const capacity = Math.max(0, plotWidth) / barSpacing
+    return Math.max(trailingSlots, capacity - candleCount)
+}
