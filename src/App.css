@@ -154,3 +154,18 @@ button {
 .candle-chart-host { position: absolute; inset: 0; touch-action: pan-y; overscroll-behavior: contain; }
 .candle-chart-overlay { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; padding: 20px; background: rgba(255,255,255,.92); pointer-events: none; }
 .candle-chart-credit { height: 22px; line-height: 22px; font-size: 11px; color: #6b7280; }
+
+.market-rankings { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 16px; margin-bottom: 24px; }
+.market-rankings h2 { font-size: 18px; margin-top: 0; }
+.market-rankings ol { padding-left: 20px; line-height: 1.9; }
+.market-controls { display: flex; flex-wrap: wrap; gap: 16px; align-items: center; margin-bottom: 20px; }
+.market-controls button { padding: 8px 12px; cursor: pointer; }
+.market-controls button[aria-pressed="true"] { background: #e0e7ff; border-color: #6366f1; }
+.market-controls input { padding: 8px; max-width: 100%; }
+.market-table-scroll { overflow-x: auto; }
+.market-table { width: 100%; border-collapse: collapse; white-space: nowrap; }
+.market-table th, .market-table td { padding: 12px; text-align: right; border-bottom: 1px solid #e5e7eb; }
+.market-table th:first-child, .market-table td:first-child { text-align: left; }
+.market-table tbody tr { cursor: pointer; }
+.market-table tbody tr:hover { background: #f5f6f8; }
+@media (max-width: 900px) { .market-rankings { grid-template-columns: 1fr; } }

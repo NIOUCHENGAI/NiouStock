@@ -92,3 +92,42 @@ To return to empty normal data, stop the server, then in PowerShell run:
     node server/index.js
 
 Reload the frontend after restarting to clear its cached snapshot.
+
+
+## Market prototype
+The market has 12 fictional creators (3 each in YouTube, Twitch, VTuber, KOL).
+GET /api/stocks and GET /api/stocks/:code include volume (shares), turnover
+(currency), and tradeCount for the current Asia/Taipei calendar day. These
+aggregate actual trade records only, including explicitly seeded simulated trades;
+orders never count toward volume. Turnover sums integer cents.
+GET /api/market/rankings returns gainers, losers, volumeLeaders, turnoverLeaders,
+5 each, with code as the deterministic tie-breaker. Gainers/losers sort the whole
+market by changePercent (including zero/negative/positive entries as applicable).
+stock:update includes these same market fields per fill. Market loads REST on
+entry/reconnect, then updates locally and reranks without polling. Category/search
+filters apply locally to the table; rankings always cover the full market.
+
+Stop the backend, then run node server/seedMarket.js for varied market history.
+Equivalent PowerShell: $env:NIOUSTOCK_SEED_MARKET='1'; node server/index.js
+The fixed formula generates historical legal-tick prices within each stock's
+limits, mixed gains/losses and different volumes. Seed mode is loopback-only and
+blocked with NODE_ENV=production. No seed endpoint exists. If both seed flags
+are set, market seed takes precedence. seedCandles.js remains available separately.
+For clean normal mode, stop the server, clear both flags, then restart:
+
+    Remove-Item Env:NIOUSTOCK_SEED_MARKET -ErrorAction SilentlyContinue
+    Remove-Item Env:NIOUSTOCK_SEED_CANDLES -ErrorAction SilentlyContinue
+    node server/index.js
+
+Reload the frontend after restarting. Seeds never settle cash/shares or create
+orders; they change trade history, displayed prices and holding market values.
+User 1 additionally holds YT002/VT001; User 2 holds TW003/KO001. Both retain their
+original YT001 position. No automatic midnight broadcast exists: daily stats reset
+on the next stock update or REST reload/reconnect. State still resets on restart.
+
+Market seed density: each stock now has 60 completed minutes of history. Active
+stocks use 3?5 trades/minute; others use 2?4. Fixed trend/oscillation formulas and
+intraminute legal-price-level offsets create visible OHLC ranges. Expect 60 1m,
+12?13 5m, 4?5 15m, and 1?2 1h candles depending on bucket alignment. Daily
+aggregation can span Taipei midnight. All prices remain canonical legal ticks
+within each stock's limits. No production aggregation or realtime logic changes.

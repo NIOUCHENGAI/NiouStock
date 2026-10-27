@@ -4,6 +4,9 @@ const http = require('node:http')
 const { WebSocketServer, WebSocket } = require('ws')
 const { intervals, aggregateCandles } = require('./candles')
 
+const { marketStats, rankStocks } = require('./market')
+const { createStocks } = require('./stockFixtures')
+
 const app = express()
 const PORT = 3000
 
@@ -39,18 +42,7 @@ function publicTrade({ id, stockCode, price, quantity, createdAt }) {
 app.use(cors())
 app.use(express.json())
 
-const stocks = [
-    {
-        code: 'YT001',
-        name: 'Test Creator',
-        category: 'YouTube',
-        price: 100.00,
-        previousClose: 94.80,
-        referencePrice: 94.80,
-        change: 5.20,
-        changePercent: 5.49
-    }
-]
+const stocks = createStocks()
 
 const users = [
     {
@@ -58,7 +50,7 @@ const users = [
         name: 'Test User',
         cash: 1000000,
         holdings: {
-            YT001: 2000
+            YT001: 2000, YT002: 100, VT001: 80
         }
     },
     {
@@ -66,7 +58,7 @@ const users = [
         name: 'Test User 2',
         cash: 1000000,
         holdings: {
-            YT001: 2000
+            YT001: 2000, TW003: 120, KO001: 150
         }
     }
 ]
@@ -186,6 +178,7 @@ function getStockData(stock) {
 
     return {
         ...stock,
+        ...marketStats(trades, stock.code),
         limitUp,
         limitDown,
         tickSize: getTickSize(stock.price)
@@ -501,6 +494,8 @@ app.get('/api/accounts/:id', (req, res) => {
     res.json(getAccountData(user))
 })
 
+app.get('/api/market/rankings', (req, res) => res.json(rankStocks(stocks.map(getStockData))))
+
 app.get('/api/stocks', (req, res) => {
     res.json(
         stocks.map(stock =>
@@ -780,13 +775,18 @@ app.delete('/api/orders/:id', (req, res) => {
 })
 
 function startServer() {
-    const seeded = process.env.NIOUSTOCK_SEED_CANDLES === '1'
+    const marketSeeded = process.env.NIOUSTOCK_SEED_MARKET === '1'
+    const candleSeeded = process.env.NIOUSTOCK_SEED_CANDLES === '1'
+    const seeded = marketSeeded || candleSeeded
     if (seeded && process.env.NODE_ENV === 'production') {
         throw new Error('Candle seed is for local development only; disabled in production')
     }
     if (seeded && trades.length === 0) {
-        trades.push(...require('./seedCandles').generateSeedTrades())
-        updateStockPrice(stocks[0], trades.at(-1).price)
+        trades.push(...(marketSeeded ? require('./seedMarket').generateMarketTrades(stocks, isValidStockPrice, getDailyPriceLimits) : require('./seedCandles').generateSeedTrades()))
+        for (const stock of stocks) {
+            const latest = trades.filter(trade => trade.stockCode === stock.code).at(-1)
+            if (latest) updateStockPrice(stock, latest.price)
+        }
         console.log('[DEV ONLY] Loaded ' + trades.length + ' simulated trades; accounts and orders are unchanged.')
     }
     const server = createServer()
