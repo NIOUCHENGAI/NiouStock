@@ -1,8 +1,40 @@
 const express = require('express')
 const cors = require('cors')
+const http = require('node:http')
+const { WebSocketServer, WebSocket } = require('ws')
+const { intervals, aggregateCandles } = require('./candles')
 
 const app = express()
 const PORT = 3000
+
+function createServer() {
+    const server = http.createServer(app)
+    const wss = new WebSocketServer({ server, path: '/ws', maxPayload: 1024 })
+    const broadcast = event => {
+        const payload = JSON.stringify(event)
+        for (const client of wss.clients) {
+            if (client.readyState !== WebSocket.OPEN) continue
+            if (client.bufferedAmount > 1024 * 1024) client.terminate()
+            else client.send(payload)
+        }
+    }
+    app.on('market', broadcast)
+    wss.on('connection', client => client.on('error', () => {}))
+    const close = server.close.bind(server)
+    server.close = callback => {
+        app.off('market', broadcast)
+        for (const client of wss.clients) client.terminate()
+        wss.close()
+        return close(callback)
+    }
+    return server
+}
+function publish(type, stockCode, data) {
+    app.emit('market', { type, stockCode, data })
+}
+function publicTrade({ id, stockCode, price, quantity, createdAt }) {
+    return { id, stockCode, price, quantity, createdAt }
+}
 
 app.use(cors())
 app.use(express.json())
@@ -377,6 +409,12 @@ function executeMatches(newOrder, stock) {
             stock,
             tradePrice
         )
+        publish('trade:new', stock.code, publicTrade(trade))
+        publish('stock:update', stock.code, getStockData(stock))
+        for (const interval of Object.keys(intervals)) {
+            const candle = aggregateCandles(trades.filter(t => t.stockCode === stock.code), interval).at(-1)
+            publish('candle:update', stock.code, { stockCode: stock.code, interval, candle })
+        }
     }
 
     updateOrderStatus(newOrder)
@@ -491,6 +529,15 @@ app.get('/api/stocks/:code', (req, res) => {
 app.get('/api/orders', (req, res) => {
     const userId = Number(req.query.userId || 1)
     res.json(orders.filter(order => order.userId === userId))
+})
+
+app.get('/api/candles/:code', (req, res) => {
+    if (!stocks.some(stock => stock.code === req.params.code)) return res.status(404).json({ message: 'Stock not found' })
+    const interval = req.query.interval === undefined ? '1m' : req.query.interval
+    const rawLimit = req.query.limit === undefined ? '100' : req.query.limit
+    if (typeof interval !== 'string' || !Object.hasOwn(intervals, interval)) return res.status(400).json({ message: 'Invalid interval' })
+    if (typeof rawLimit !== 'string' || !/^[0-9]+$/.test(rawLimit) || !Number.isSafeInteger(Number(rawLimit)) || Number(rawLimit) < 1 || Number(rawLimit) > 500) return res.status(400).json({ message: 'Limit must be an integer from 1 to 500' })
+    res.json(aggregateCandles(trades.filter(t => t.stockCode === req.params.code), interval).slice(-Number(rawLimit)))
 })
 
 app.get('/api/trades', (req, res) => {
@@ -686,6 +733,8 @@ app.post('/api/orders', (req, res) => {
             stock
         )
 
+    publish('orderbook:update', stockCode, buildOrderBook(stockCode))
+
     res.status(201).json({
         message:
             completedTrades.length > 0
@@ -722,6 +771,7 @@ app.delete('/api/orders/:id', (req, res) => {
     }
 
     order.status = 'cancelled'
+    publish('orderbook:update', order.stockCode, buildOrderBook(order.stockCode))
 
     res.json({
         message: '訂單取消成功',
@@ -729,10 +779,10 @@ app.delete('/api/orders/:id', (req, res) => {
     })
 })
 
-if (require.main === module) app.listen(PORT, () => {
+if (require.main === module) createServer().listen(PORT, () => {
     console.log(
         `NiouStock server running at http://localhost:${PORT}`
     )
 })
 
-module.exports = { app, getTickCents, isValidStockPrice, getDailyPriceLimits }
+module.exports = { app, createServer, getTickCents, isValidStockPrice, getDailyPriceLimits }

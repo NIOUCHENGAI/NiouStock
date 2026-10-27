@@ -1,9 +1,18 @@
 import { useEffect, useState } from 'react'
 import { useParams } from 'react-router-dom'
+import { readApi, loadSnapshot, WS_URL } from '../stockSnapshot.mjs'
+import CandleChart from './CandleChart'
+import { addTrade, updateCandle } from '../marketUpdates.mjs'
 import { stepPrice } from '../priceSteps.mjs'
 
 function StockDetail() {
     const { code } = useParams()
+
+    const [interval, setInterval] = useState('1m')
+    const [candles, setCandles] = useState([])
+    const [marketStatus, setMarketStatus] = useState('行情連線中')
+    const [candleError, setCandleError] = useState('')
+    const [regionErrors, setRegionErrors] = useState({})
 
     const [stock, setStock] = useState(null)
 
@@ -24,10 +33,7 @@ function StockDetail() {
     }
 
     async function refreshAll() {
-        const [stockData] = await Promise.all([
-            loadStock(), loadAccount(), loadOrderBook(), loadTrades(), loadOpenOrders()
-        ])
-        return stockData
+        await Promise.all([loadAccount(), loadOpenOrders()])
     }
 
     const [price, setPrice] = useState('')
@@ -48,45 +54,6 @@ function StockDetail() {
 
     function selectOrderPrice(orderPrice) {
         setPrice(orderPrice)
-    }
-
-    function loadOrderBook() {
-        return fetch(`http://localhost:3000/api/orderbook/${code}`)
-            .then(response => {
-                if (!response.ok) {
-                    throw new Error('取得訂單簿失敗')
-                }
-
-                return response.json()
-            })
-            .then(data => {
-                setOrderBook(data)
-            })
-            .catch(error => {
-                setOrderBook({
-                    buys: [],
-                    sells: []
-                })
-                throw error
-            })
-    }
-
-    function loadTrades() {
-        return fetch(`http://localhost:3000/api/trades/${code}`)
-            .then(response => {
-                if (!response.ok) {
-                    throw new Error('取得成交紀錄失敗')
-                }
-
-                return response.json()
-            })
-            .then(data => {
-                setTrades(data)
-            })
-            .catch(error => {
-                setTrades([])
-                throw error
-            })
     }
 
     function loadOpenOrders() {
@@ -117,37 +84,110 @@ function StockDetail() {
             })
     }
 
-    function loadStock() {
-        return fetch(
-            `http://localhost:3000/api/stocks/${code}`
-        )
-            .then(response => {
-                if (!response.ok) {
-                    throw new Error('找不到股票')
-                }
-
-                return response.json()
-            })
-            .then(data => {
-                setStock(data)
-                return data
-            })
-    }
-
     useEffect(() => {
+        let disposed = false
+        let socket
+        let timer
+        let attempt = 0
+        let generation = 0
+        let pending = null
+        let initialized = false
+        const controller = new AbortController()
         setLoading(true)
         setError('')
-        refreshAll()
-            .then(data => {
-                setPrice(data.price)
-                setLoading(false)
+        setCandles([])
+        setStock(null)
+        setAccount(null)
+        setOrderBook({ buys: [], sells: [] })
+        setTrades([])
+        setOpenOrders([])
+        setRegionErrors({})
+        setCandleError('')
+        const read = path => readApi(path, controller.signal)
+        const apply = event => {
+            if (event.stockCode !== code) return
+            if (event.type === 'stock:update') setStock(event.data)
+            if (event.type === 'orderbook:update') setOrderBook(event.data)
+            if (event.type === 'trade:new') setTrades(items => addTrade(items, event.data))
+            if (event.type === 'candle:update' && event.data.interval === interval) setCandles(items => updateCandle(items, event.data.candle))
+        }
+        const snapshot = async () => {
+            const id = ++generation
+            const queue = []
+            pending = queue
+            const isCurrent = () => !disposed && id === generation
+            const region = (key, success, reset) => ({
+                success: data => {
+                    success(data)
+                    setRegionErrors(errors => ({ ...errors, [key]: '' }))
+                },
+                failure: error => {
+                    reset()
+                    setRegionErrors(errors => ({ ...errors, [key]: error.message }))
+                }
             })
-            .catch(() => {
-                setError('無法取得股票資料')
-                setLoading(false)
-            })
-
-    }, [code])
+            await loadSnapshot(read, code, interval, {
+                stock: {
+                    success: data => {
+                        setStock(data)
+                        if (!initialized) setPrice(data.price)
+                        initialized = true
+                        setError('')
+                        setLoading(false)
+                    },
+                    failure: error => {
+                        setError('無法取得股票資料：' + error.message)
+                        setLoading(false)
+                    }
+                },
+                book: region('book', setOrderBook, () => setOrderBook({ buys: [], sells: [] })),
+                trades: region('trades', history => setTrades([...history].sort((a, b) => Date.parse(b.createdAt) - Date.parse(a.createdAt) || b.id - a.id).slice(0, 100)), () => setTrades([])),
+                account: region('account', setAccount, () => setAccount(null)),
+                orders: region('orders', orders => setOpenOrders(orders.filter(o => o.stockCode === code && ['pending', 'partially_filled'].includes(o.status))), () => setOpenOrders([])),
+                candles: {
+                    success: data => { setCandles(data); setCandleError('') },
+                    failure: error => { setCandles([]); setCandleError(error.message) }
+                }
+            }, isCurrent)
+            if (isCurrent()) {
+                queue.forEach(apply)
+                pending = null
+            }
+        }
+        const connect = () => {
+            if (disposed) return
+            socket = new WebSocket(WS_URL)
+            socket.onopen = () => {
+                attempt = 0
+                setMarketStatus('即時行情已連線')
+                snapshot()
+            }
+            socket.onmessage = message => {
+                try {
+                    const event = JSON.parse(message.data)
+                    if (pending) pending.push(event)
+                    else apply(event)
+                } catch { /* Ignore malformed messages. */ }
+            }
+            socket.onerror = () => socket.close()
+            socket.onclose = () => {
+                if (disposed) return
+                setMarketStatus('行情已斷線，正在重新連線；REST 仍可使用')
+                timer = setTimeout(connect, Math.min(1000 * 2 ** attempt++, 5000))
+            }
+        }
+        snapshot()
+        connect()
+        return () => {
+            disposed = true
+            controller.abort()
+            clearTimeout(timer)
+            if (socket) {
+                socket.onopen = socket.onmessage = socket.onclose = socket.onerror = null
+                socket.close()
+            }
+        }
+    }, [code, interval])
 
     async function submitOrder(side) {
         if (busy) return
@@ -214,9 +254,7 @@ function StockDetail() {
 
             setQuantity('')
 
-            const stockData = await refreshAll()
-
-            setPrice(stockData.price)
+            await refreshAll()
 
         } catch {
             setMessage('交易或資料更新失敗，請重新整理確認訂單狀態')
@@ -295,6 +333,7 @@ function StockDetail() {
             </section>
 
             <section className="market-section">
+                {regionErrors.account && <p role="alert">{regionErrors.account}</p>}
                 {account && <div aria-label="測試帳戶">
                     <h2>{account.name}</h2>
                     <p>可用現金：${account.availableCash.toFixed(2)} ｜ 保留現金：${account.reservedCash.toFixed(2)}</p>
@@ -336,7 +375,16 @@ function StockDetail() {
                 <hr />
 
                 <div>
+                    <p role="status">{marketStatus}</p>
+                    <h2>K 線</h2>
+                    {['1m', '5m', '15m', '1h', '1d'].map(value => <button key={value} type="button" aria-pressed={interval === value} onClick={() => setInterval(value)}>{value}</button>)}
+                    {candleError && <p role="alert">{candleError}</p>}
+                    {!candleError && <CandleChart candles={candles} />}
+                </div>
+                <hr />
+                <div>
                     <h2>五檔</h2>
+                    {regionErrors.book && <p role="alert">{regionErrors.book}</p>}
 
                     {displaySells.length === 0 && (
                         <p>目前沒有賣單</p>
@@ -412,6 +460,7 @@ function StockDetail() {
 
                 <div>
                     <h2>目前掛單</h2>
+                    {regionErrors.orders && <p role="alert">{regionErrors.orders}</p>}
 
                     {openOrders.length === 0 && (
                         <p>目前沒有掛單</p>
@@ -461,6 +510,7 @@ function StockDetail() {
 
                 <div>
                     <h2>逐筆成交</h2>
+                    {regionErrors.trades && <p role="alert">{regionErrors.trades}</p>}
 
                     {trades.length === 0 && (
                         <p>目前沒有成交紀錄</p>
