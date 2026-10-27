@@ -1,27 +1,106 @@
-export default function CandleChart({ candles }) {
-    if (!candles.length) return <p>目前尚無成交資料</p>
-    const low = Math.min(...candles.map(c => c.low))
-    const high = Math.max(...candles.map(c => c.high))
-    const span = high - low || 1
-    const y = price => 20 + (high - price) / span * 180
-    const width = 720 / candles.length
-    const time = timestamp => new Date(timestamp).toLocaleString('zh-TW', { timeZone: 'Asia/Taipei' })
-    return <div>
-        <svg viewBox="0 0 800 250" role="img" aria-label="Candlestick chart (Asia/Taipei)" style={{ width: '100%', maxWidth: 900 }}>
-            <text x="735" y="20" fontSize="12">{high.toFixed(2)}</text>
-            <text x="735" y="200" fontSize="12">{low.toFixed(2)}</text>
-            {candles.map((c, i) => {
-                const x = 10 + width * (i + 0.5)
-                const color = c.close >= c.open ? '#c93030' : '#168340'
-                return <g key={c.timestamp}>
-                    <title>{time(c.timestamp)} Open {c.open} High {c.high} Low {c.low} Close {c.close} Volume {c.volume} / {c.tradeCount} trades</title>
-                    <line x1={x} x2={x} y1={y(c.high)} y2={y(c.low)} stroke={color} />
-                    <rect x={x - Math.min(width * .3, 12)} y={y(Math.max(c.open, c.close))} width={Math.min(width * .6, 24)} height={Math.max(1, Math.abs(y(c.open) - y(c.close)))} fill={color} />
-                </g>
-            })}
-            <text x="10" y="235" fontSize="11">{time(candles[0].timestamp)}</text>
-            <text x="730" y="235" textAnchor="end" fontSize="11">{time(candles.at(-1).timestamp)}</text>
-        </svg>
-        <p>OHLC: {candles.at(-1).open} / {candles.at(-1).high} / {candles.at(-1).low} / {candles.at(-1).close}</p>
+import { useEffect, useRef, useState } from 'react'
+import { createChart, CandlestickSeries, CrosshairMode } from 'lightweight-charts'
+import { chartChange, formatChartTime, toChartCandle } from '../chartData.mjs'
+
+export default function CandleChart({ candles, interval, datasetKey, loading, error }) {
+    const host = useRef(null)
+    const api = useRef(null)
+    const current = useRef({ candles, interval })
+    const history = useRef([])
+    const activeKey = useRef(null)
+    const needsFit = useRef(true)
+    const [hovered, setHovered] = useState(null)
+    current.current = { candles, interval }
+
+    useEffect(() => {
+        const element = host.current
+        const chart = createChart(element, {
+            width: element.clientWidth, height: element.clientHeight,
+            layout: { background: { color: '#ffffff' }, textColor: '#374151', attributionLogo: true },
+            rightPriceScale: { visible: true, autoScale: true },
+            leftPriceScale: { visible: false },
+            crosshair: { mode: CrosshairMode.Normal },
+            handleScroll: { mouseWheel: false, pressedMouseMove: true, horzTouchDrag: true, vertTouchDrag: false },
+            handleScale: { mouseWheel: true, pinch: true, axisPressedMouseMove: { time: true, price: true }, axisDoubleClickReset: true },
+            timeScale: { timeVisible: true, secondsVisible: false, shiftVisibleRangeOnNewBar: false,
+                tickMarkFormatter: time => formatChartTime(time, current.current.interval, true) },
+            localization: { locale: 'zh-TW', timeFormatter: time => formatChartTime(time, current.current.interval) }
+        })
+        const series = chart.addSeries(CandlestickSeries, {
+            upColor: '#c93030', downColor: '#168340', borderVisible: false,
+            wickUpColor: '#c93030', wickDownColor: '#168340',
+            priceFormat: { type: 'price', precision: 2, minMove: 0.01 }
+        })
+        const crosshair = event => {
+            const bar = event.seriesData.get(series)
+            setHovered(bar ? current.current.candles.find(c => Math.floor(c.timestamp / 1000) === bar.time) ?? null : null)
+        }
+        chart.subscribeCrosshairMove(crosshair)
+        const observer = new ResizeObserver(entries => {
+            const { width, height } = entries[0].contentRect
+            if (width > 0 && height > 0) chart.resize(Math.floor(width), Math.floor(height))
+        })
+        observer.observe(element)
+        // Consume wheel inside the plot so zoom never scrolls the document.
+        const wheel = event => event.preventDefault()
+        element.addEventListener('wheel', wheel, { passive: false })
+        api.current = { chart, series }
+        history.current = []
+        needsFit.current = true
+        return () => {
+            element.removeEventListener('wheel', wheel)
+            observer.disconnect()
+            chart.unsubscribeCrosshairMove(crosshair)
+            chart.remove()
+            api.current = null
+        }
+    }, [])
+
+    useEffect(() => {
+        if (!api.current) return
+        const { chart, series } = api.current
+        if (activeKey.current !== datasetKey) {
+            activeKey.current = datasetKey
+            needsFit.current = true
+            history.current = []
+            series.setData([])
+            setHovered(null)
+            chart.applyOptions({ timeScale: { timeVisible: interval !== '1d' } })
+            chart.priceScale('right').applyOptions({ autoScale: true })
+        }
+        if (loading) return
+        const range = chart.timeScale().getVisibleLogicalRange()
+        if (chartChange(history.current, candles) === 'update') {
+            const last = history.current.at(-1)?.timestamp ?? -Infinity
+            for (const candle of candles) if (candle.timestamp >= last) series.update(toChartCandle(candle))
+        } else {
+            series.setData(candles.map(toChartCandle))
+        }
+        if (needsFit.current && candles.length) {
+            chart.timeScale().fitContent()
+            needsFit.current = false
+        } else if (range && candles.length) {
+            chart.timeScale().setVisibleLogicalRange(range)
+        }
+        history.current = candles
+        setHovered(previous => previous ? candles.find(c => c.timestamp === previous.timestamp) ?? null : null)
+    }, [candles, datasetKey, interval, loading])
+
+    const selected = hovered ?? candles.at(-1)
+    return <div className="candle-chart-card">
+        <div className="candle-chart-info" aria-live="off">
+            {!loading && !error && selected ? <>
+                {formatChartTime(selected.timestamp / 1000, interval)}{'  '}
+                O {selected.open.toFixed(2)}{'  '}H {selected.high.toFixed(2)}{'  '}
+                L {selected.low.toFixed(2)}{'  '}C {selected.close.toFixed(2)}{'  '}V {selected.volume}
+            </> : ' '}
+        </div>
+        <div className="candle-chart-frame">
+            <div ref={host} className="candle-chart-host" aria-label="Interactive candlestick chart" />
+            {(loading || error || !candles.length) && <div className="candle-chart-overlay" role={error ? 'alert' : 'status'}>
+                {loading ? '載入 K 線中…' : error || '目前尚無成交資料'}
+            </div>}
+        </div>
+        <div className="candle-chart-credit">Charts by <a href="https://www.tradingview.com/" target="_blank" rel="noreferrer">TradingView</a></div>
     </div>
 }

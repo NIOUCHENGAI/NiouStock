@@ -779,10 +779,24 @@ app.delete('/api/orders/:id', (req, res) => {
     })
 })
 
-if (require.main === module) createServer().listen(PORT, () => {
-    console.log(
-        `NiouStock server running at http://localhost:${PORT}`
-    )
-})
+function startServer() {
+    const seeded = process.env.NIOUSTOCK_SEED_CANDLES === '1'
+    if (seeded && process.env.NODE_ENV === 'production') {
+        throw new Error('Candle seed is for local development only; disabled in production')
+    }
+    if (seeded && trades.length === 0) {
+        trades.push(...require('./seedCandles').generateSeedTrades())
+        updateStockPrice(stocks[0], trades.at(-1).price)
+        console.log('[DEV ONLY] Loaded ' + trades.length + ' simulated trades; accounts and orders are unchanged.')
+    }
+    const server = createServer()
+    const ready = () => console.log('NiouStock server running at http://localhost:' + PORT)
+    // Seeded mode is loopback-only and cannot expose fixture data on the LAN.
+    if (seeded) server.listen(PORT, '127.0.0.1', ready)
+    else server.listen(PORT, ready)
+    return server
+}
 
-module.exports = { app, createServer, getTickCents, isValidStockPrice, getDailyPriceLimits }
+if (require.main === module) startServer()
+
+module.exports = { app, createServer, startServer, getTickCents, isValidStockPrice, getDailyPriceLimits }

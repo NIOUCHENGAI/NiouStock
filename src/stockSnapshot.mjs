@@ -13,7 +13,7 @@ export async function loadSnapshot(read, code, interval, handlers, isCurrent) {
     const paths = { stock: '/stocks/' + code, book: '/orderbook/' + code,
         trades: '/trades/' + code, account: '/account', orders: '/orders?userId=1',
         candles: '/candles/' + code + '?interval=' + interval + '&limit=100' }
-    return Promise.allSettled(Object.entries(paths).map(async ([key, path]) => {
+    return Promise.allSettled(Object.entries(paths).filter(([key]) => handlers[key]).map(async ([key, path]) => {
         try {
             const data = await read(path)
             if (isCurrent()) handlers[key].success(data)

@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useParams } from 'react-router-dom'
 import { readApi, loadSnapshot, WS_URL } from '../stockSnapshot.mjs'
 import CandleChart from './CandleChart'
@@ -10,6 +10,9 @@ function StockDetail() {
 
     const [interval, setInterval] = useState('1m')
     const [candles, setCandles] = useState([])
+    const [candleLoading, setCandleLoading] = useState(true)
+    const [candleKey, setCandleKey] = useState('')
+    const candleConnection = useRef(null)
     const [marketStatus, setMarketStatus] = useState('行情連線中')
     const [candleError, setCandleError] = useState('')
     const [regionErrors, setRegionErrors] = useState({})
@@ -95,21 +98,18 @@ function StockDetail() {
         const controller = new AbortController()
         setLoading(true)
         setError('')
-        setCandles([])
         setStock(null)
         setAccount(null)
         setOrderBook({ buys: [], sells: [] })
         setTrades([])
         setOpenOrders([])
         setRegionErrors({})
-        setCandleError('')
         const read = path => readApi(path, controller.signal)
         const apply = event => {
             if (event.stockCode !== code) return
             if (event.type === 'stock:update') setStock(event.data)
             if (event.type === 'orderbook:update') setOrderBook(event.data)
             if (event.type === 'trade:new') setTrades(items => addTrade(items, event.data))
-            if (event.type === 'candle:update' && event.data.interval === interval) setCandles(items => updateCandle(items, event.data.candle))
         }
         const snapshot = async () => {
             const id = ++generation
@@ -126,7 +126,7 @@ function StockDetail() {
                     setRegionErrors(errors => ({ ...errors, [key]: error.message }))
                 }
             })
-            await loadSnapshot(read, code, interval, {
+            await loadSnapshot(read, code, '1m', {
                 stock: {
                     success: data => {
                         setStock(data)
@@ -143,11 +143,7 @@ function StockDetail() {
                 book: region('book', setOrderBook, () => setOrderBook({ buys: [], sells: [] })),
                 trades: region('trades', history => setTrades([...history].sort((a, b) => Date.parse(b.createdAt) - Date.parse(a.createdAt) || b.id - a.id).slice(0, 100)), () => setTrades([])),
                 account: region('account', setAccount, () => setAccount(null)),
-                orders: region('orders', orders => setOpenOrders(orders.filter(o => o.stockCode === code && ['pending', 'partially_filled'].includes(o.status))), () => setOpenOrders([])),
-                candles: {
-                    success: data => { setCandles(data); setCandleError('') },
-                    failure: error => { setCandles([]); setCandleError(error.message) }
-                }
+                orders: region('orders', orders => setOpenOrders(orders.filter(o => o.stockCode === code && ['pending', 'partially_filled'].includes(o.status))), () => setOpenOrders([]))
             }, isCurrent)
             if (isCurrent()) {
                 queue.forEach(apply)
@@ -161,10 +157,15 @@ function StockDetail() {
                 attempt = 0
                 setMarketStatus('即時行情已連線')
                 snapshot()
+                candleConnection.current?.reload()
             }
             socket.onmessage = message => {
                 try {
                     const event = JSON.parse(message.data)
+                    if (event.type === 'candle:update') {
+                        candleConnection.current?.receive(event)
+                        return
+                    }
                     if (pending) pending.push(event)
                     else apply(event)
                 } catch { /* Ignore malformed messages. */ }
@@ -186,6 +187,54 @@ function StockDetail() {
                 socket.onopen = socket.onmessage = socket.onclose = socket.onerror = null
                 socket.close()
             }
+        }
+    }, [code])
+
+    useEffect(() => {
+        let disposed = false
+        let controller
+        let queue = null
+        let generation = 0
+        const apply = event => setCandles(items => updateCandle(items, event.data.candle))
+        const reload = async () => {
+            controller?.abort()
+            controller = new AbortController()
+            const id = ++generation
+            const events = []
+            queue = events
+            setCandleLoading(true)
+            setCandleError('')
+            try {
+                const data = await readApi('/candles/' + code + '?interval=' + interval + '&limit=100', controller.signal)
+                if (disposed || id !== generation) return
+                setCandles(data)
+            } catch (error) {
+                if (disposed || id !== generation) return
+                setCandles([])
+                setCandleError(error.message)
+            } finally {
+                if (!disposed && id === generation) {
+                    events.forEach(apply)
+                    queue = null
+                    setCandleKey(code + ':' + interval)
+                    setCandleLoading(false)
+                }
+            }
+        }
+        candleConnection.current = {
+            reload,
+            receive: event => {
+                if (event.stockCode !== code || event.data.interval !== interval) return
+                if (queue) queue.push(event)
+                else apply(event)
+            }
+        }
+        setCandles([])
+        reload()
+        return () => {
+            disposed = true
+            controller?.abort()
+            candleConnection.current = null
         }
     }, [code, interval])
 
@@ -378,8 +427,7 @@ function StockDetail() {
                     <p role="status">{marketStatus}</p>
                     <h2>K 線</h2>
                     {['1m', '5m', '15m', '1h', '1d'].map(value => <button key={value} type="button" aria-pressed={interval === value} onClick={() => setInterval(value)}>{value}</button>)}
-                    {candleError && <p role="alert">{candleError}</p>}
-                    {!candleError && <CandleChart candles={candles} />}
+                    <CandleChart candles={candles} interval={interval} datasetKey={code + ":" + interval} loading={candleLoading || candleKey !== code + ":" + interval} error={candleError} />
                 </div>
                 <hr />
                 <div>

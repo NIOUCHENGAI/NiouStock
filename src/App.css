@@ -147,3 +147,10 @@ button {
     color: #6b7280;
     line-height: 1.6;
 }
+
+.candle-chart-card { width: 100%; min-width: 0; overflow-anchor: none; }
+.candle-chart-info { height: 42px; line-height: 20px; font-size: 13px; font-variant-numeric: tabular-nums; overflow: hidden; }
+.candle-chart-frame { position: relative; height: clamp(320px, 50vh, 480px); overflow: hidden; }
+.candle-chart-host { position: absolute; inset: 0; touch-action: pan-y; overscroll-behavior: contain; }
+.candle-chart-overlay { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; padding: 20px; background: rgba(255,255,255,.92); pointer-events: none; }
+.candle-chart-credit { height: 22px; line-height: 22px; font-size: 11px; color: #6b7280; }

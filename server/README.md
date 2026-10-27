@@ -58,3 +58,37 @@ reload to refresh market data if disconnected. SVG charts retain 100 candles,
 with Taipei timestamps, OHLC labels and tooltips. Private account changes from
 other clients require manual refresh. State is unbounded in memory and lost on
 restart; no authentication, durable history or subscription filtering is provided.
+
+
+### Local candle fixtures
+Stop the existing backend first (Ctrl+C); then run:
+
+    node server/seedCandles.js
+
+Equivalent PowerShell startup:
+
+    $env:NIOUSTOCK_SEED_CANDLES='1'; node server/index.js
+
+This starts a new server on port 3000, bound to 127.0.0.1 only. It does not
+inject data into an already-running server. NODE_ENV=production rejects seed mode.
+No seed HTTP endpoint exists. Only the main startup path seeds; importing the
+module in tests does not. Normal startup never adds fixture data.
+
+The fixed formula produces 120 synthetic trades over the previous 60 completed
+minutes (1?3 trades/minute), prices 96?103 in legal 0.50 ticks, with varying
+volumes. The same anchor time always gives identical results. Timestamps move
+with startup time; intervals naturally straddling boundaries may yield 12?13
+five-minute or 4?5 fifteen-minute candles. Daily buckets follow Taipei midnight,
+so startup just after midnight can include yesterday as well as today.
+
+Fixture trades carry simulated:true and do not represent settled transactions.
+They add chart/trade history and set the displayed stock price to the last
+fixture price. Cash, holdings, reservations, orders and matching rules are not
+changed. Existing history is not overwritten. All data remains in memory.
+
+To return to empty normal data, stop the server, then in PowerShell run:
+
+    Remove-Item Env:NIOUSTOCK_SEED_CANDLES -ErrorAction SilentlyContinue
+    node server/index.js
+
+Reload the frontend after restarting to clear its cached snapshot.
