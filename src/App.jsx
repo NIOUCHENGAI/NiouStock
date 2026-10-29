@@ -2,26 +2,12 @@ import './App.css'
 import { BrowserRouter, Routes, Route, Link } from 'react-router-dom'
 import Market from './pages/Market.jsx'
 import StockDetail from './pages/StockDetail.jsx'
+import Portfolio from './pages/Portfolio.jsx'
 
 function Home() {
     return (
         <div className="app">
-            <header className="header">
-                <div className="logo">NiouStock</div>
 
-                <nav className="nav">
-                    <Link to="/">首頁</Link>
-                    <Link to="/market">市場</Link>
-                    <a href="#">自選</a>
-                    <a href="#">排行榜</a>
-                    <a href="#">我的資產</a>
-                </nav>
-
-                <div className="account">
-                    <span>虛擬資金</span>
-                    <strong>$1,000,000</strong>
-                </div>
-            </header>
 
             <main className="main">
                 <section className="welcome">
@@ -76,8 +62,10 @@ function Home() {
 function App() {
     return (
         <BrowserRouter>
+            <header className="header"><Link className="logo" to="/">NiouStock</Link><nav className="nav"><Link to="/market">Market</Link><Link to="/portfolio">Portfolio</Link></nav></header>
             <Routes>
                 <Route path="/" element={<Home />} />
+                <Route path="/portfolio" element={<Portfolio />} />
                 <Route path="/market" element={<Market />} />
                 <Route path="/stock/:code" element={<StockDetail />} />
             </Routes>

@@ -7,6 +7,8 @@ const { intervals, aggregateCandles } = require('./candles')
 const { marketStats, rankStocks } = require('./market')
 const { createStocks } = require('./stockFixtures')
 
+const { createHolding, buyHolding, sellHolding, valuePosition, summarizePositions, publicHolding } = require('../src/portfolioMath.mjs')
+
 const app = express()
 const PORT = 3000
 
@@ -50,7 +52,7 @@ const users = [
         name: 'Test User',
         cash: 1000000,
         holdings: {
-            YT001: 2000, YT002: 100, VT001: 80
+            YT001: createHolding(2000, 94.8), YT002: createHolding(100, 48), VT001: createHolding(80, 38)
         }
     },
     {
@@ -58,7 +60,7 @@ const users = [
         name: 'Test User 2',
         cash: 1000000,
         holdings: {
-            YT001: 2000, TW003: 120, KO001: 150
+            YT001: createHolding(2000, 94.8), TW003: createHolding(120, 115), KO001: createHolding(150, 26)
         }
     }
 ]
@@ -190,60 +192,23 @@ function getAccountData(user) {
     const reservedCashCents = orders
         .filter(order => order.userId === user.id && order.side === 'buy' && isOrderOpen(order))
         .reduce((sum, order) => sum + Math.round(order.price * 100) * order.remainingQuantity, 0)
-    const holdings = Object.entries(
-        user.holdings
-    ).map(([stockCode, quantity]) => {
-        const stock = stocks.find(
-            item => item.code === stockCode
-        )
-
-        const price =
-            stock ? stock.price : 0
-
+    const holdings = Object.entries(user.holdings).map(([stockCode, holding]) => {
+        const stock = stocks.find(item => item.code === stockCode)
         const reservedQuantity = orders
             .filter(order => order.userId === user.id && order.stockCode === stockCode && order.side === 'sell' && isOrderOpen(order))
             .reduce((sum, order) => sum + order.remainingQuantity, 0)
-
-        return {
-            stockCode,
-            quantity,
-            availableQuantity: quantity - reservedQuantity,
-            reservedQuantity,
-            currentPrice: price,
-            price,
-            marketValue:
-                Number(
-                    (price * quantity).toFixed(2)
-                )
-        }
+        return valuePosition({ stockCode, ...publicHolding(holding),
+            availableQuantity: holding.quantity - reservedQuantity, reservedQuantity },
+            stock || { price: 0, previousClose: 0, name: stockCode, category: '' })
     })
+    const summary = summarizePositions(user.cash, reservedCashCents / 100, holdings)
+    return { id: user.id, name: user.name, ...summary, holdings, summary }
+}
 
-    const holdingsValue =
-        holdings.reduce(
-            (total, holding) =>
-                total + holding.marketValue,
-            0
-        )
-
-    return {
-        id: user.id,
-        name: user.name,
-        cash: user.cash,
-        reservedCash: reservedCashCents / 100,
-        availableCash: (Math.round(user.cash * 100) - reservedCashCents) / 100,
-        holdings,
-        holdingsValue:
-            Number(
-                holdingsValue.toFixed(2)
-            ),
-        totalAssets:
-            Number(
-                (
-                    user.cash +
-                    holdingsValue
-                ).toFixed(2)
-            )
-    }
+function getPortfolio(user) {
+    const account = getAccountData(user)
+    return { user: { id: user.id, name: user.name }, summary: account.summary,
+        positions: account.holdings.filter(holding => holding.quantity > 0) }
 }
 
 function isOrderOpen(order) {
@@ -358,8 +323,9 @@ function executeMatches(newOrder, stock) {
         const amountCents = Math.round(tradePrice * 100) * tradeQuantity
         buyer.cash = (Math.round(buyer.cash * 100) - amountCents) / 100
         seller.cash = (Math.round(seller.cash * 100) + amountCents) / 100
-        buyer.holdings[stock.code] = (buyer.holdings[stock.code] || 0) + tradeQuantity
-        seller.holdings[stock.code] -= tradeQuantity
+        const bought = buyer.holdings[stock.code] ||= createHolding()
+        buyHolding(bought, tradeQuantity, tradePrice)
+        sellHolding(seller.holdings[stock.code], tradeQuantity, tradePrice)
 
         newOrder.remainingQuantity -=
             tradeQuantity
@@ -484,6 +450,12 @@ app.get('/api/account', (req, res) => {
     res.json(
         getAccountData(user)
     )
+})
+
+app.get('/api/portfolio/:userId', (req, res) => {
+    const user = users.find(item => item.id === Number(req.params.userId))
+    if (!user) return res.status(404).json({ message: 'User not found' })
+    res.json(getPortfolio(user))
 })
 
 app.get('/api/accounts', (req, res) => res.json(users.map(getAccountData)))

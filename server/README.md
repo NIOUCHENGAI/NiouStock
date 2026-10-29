@@ -131,3 +131,33 @@ intraminute legal-price-level offsets create visible OHLC ranges. Expect 60 1m,
 12?13 5m, 4?5 15m, and 1?2 1h candles depending on bucket alignment. Daily
 aggregation can span Taipei midnight. All prices remain canonical legal ticks
 within each stock's limits. No production aggregation or realtime logic changes.
+
+
+## Portfolio and cost basis
+Holdings are structured positions: quantity, averageCostMicros and
+realizedPnlMicros (BigInt integer millionths of currency). Moving average cost is
+weighted per actual fill, with six decimal places rounded half away from zero.
+Selling keeps remaining average cost unchanged and accumulates (fill price minus
+average cost) times filled shares. A closed holding stays in memory with zero
+quantity/cost and retained realized PnL; reentry starts a new average cost.
+Cash still settles once in integer cents; PnL never adds extra cash.
+Public averageCost uses six decimals; monetary totals round to cents. Cost basis
+is average cost times quantity, rounded to cents; tiny rounding differences are
+possible with fractional averages. Both backend and frontend use the same pure
+valuation helpers (Node supporting synchronous require of ESM is required).
+Initial YT001 costs are 94.80 for both users. User 1: YT002 48, VT001 38;
+User 2: TW003 115, KO001 26. Seeds only change quotes/history, never cost basis.
+
+GET /api/account and /api/accounts/:id retain their fields and add summary,
+averageCost, costBasis, realizedPnl, unrealizedPnl/Percent, todayPnl/Percent.
+Unrealized PnL = market value minus cost basis; percentage divides by cost basis.
+Prototype todayPnl = (price - previousClose) times current quantity; percentage
+uses previousClose. Zero denominators return 0. This is not exact intraday PnL
+attribution for newly bought positions. Summary includes realized PnL from closed
+holdings. totalAssets = cash + holdingsValue, without adding reserves or costs.
+GET /api/portfolio/:userId returns user, summary, positions (quantity > 0).
+The /portfolio page uses User 1, with public stock:update events revaluing quotes
+only; quantity/cash/cost are refreshed via REST on entry, reconnect or manual
+refresh. Other clients' private trades require a refresh; no private WS exists.
+IDs remain caller-supplied test identities, not authentication. Data is in memory
+and disappears on restart. No fees, taxes, corporate actions or persisted ledger.

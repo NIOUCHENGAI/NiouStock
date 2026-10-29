@@ -177,6 +177,8 @@ test('market startup: seeded HTTP history, prices, rankings and unchanged cash/s
                     assert.equal(account.cash, 1000000)
                     assert.equal(account.reservedCash, 0)
                     assert.equal(account.holdings.find(h => h.stockCode === 'YT001').quantity, 2000)
+                    assert.equal(account.holdings.find(h => h.stockCode === 'YT001').averageCost, 94.8)
+                    assert.equal(account.summary.realizedPnl, 0)
                 }
                 assert.deepEqual(await read('/orders'), [])
                 assert.deepEqual(await read('/market/rankings'), require('./server/market').rankStocks(stocks))

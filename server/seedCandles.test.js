@@ -73,6 +73,8 @@ for (const seeded of [false, true]) {
                         assert.equal(a.cash, 1000000)
                         assert.equal(a.reservedCash, 0)
                         assert.equal(a.holdings[0].quantity, 2000)
+                        assert.equal(a.holdings[0].averageCost, 94.8)
+                        assert.equal(a.realizedPnl, 0)
                         assert.equal(a.holdings[0].reservedQuantity, 0)
                     }
                     assert.deepEqual(await get('/orders'), [])

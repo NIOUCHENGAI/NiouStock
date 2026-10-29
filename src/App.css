@@ -169,3 +169,5 @@ button {
 .market-table tbody tr { cursor: pointer; }
 .market-table tbody tr:hover { background: #f5f6f8; }
 @media (max-width: 900px) { .market-rankings { grid-template-columns: 1fr; } }
+
+.portfolio-summary { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 16px; margin-top: 20px; }
