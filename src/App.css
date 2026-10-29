@@ -174,3 +174,11 @@ button {
 
 .history-filters { display: flex; flex-wrap: wrap; align-items: center; gap: 16px; margin: 20px 0; }
 .history-filters input, .history-filters select, .history-filters button { padding: 8px; }
+
+.equity-section { margin: 24px 0; min-width: 0; overflow-anchor: none; }
+.equity-heading { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 12px; }
+.equity-heading h2 { margin: 0; }
+.equity-heading .market-controls { margin: 0; gap: 8px; }
+.equity-summary { height: 68px; display: flex; flex-direction: column; justify-content: center; gap: 6px; font-variant-numeric: tabular-nums; }
+.equity-summary span { font-size: 13px; color: #6b7280; }
+.equity-chart-frame { height: 360px; position: relative; overflow: hidden; }

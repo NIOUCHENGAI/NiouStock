@@ -7,6 +7,7 @@ const { intervals, aggregateCandles } = require('./candles')
 const { marketStats, rankStocks } = require('./market')
 const { createStocks } = require('./stockFixtures')
 const { tradeHistory, money } = require('./tradeHistory')
+const { createEquityHistory, recordAffectedEquity } = require('./equityHistory')
 
 const { createHolding, buyHolding, sellHolding, valuePosition, summarizePositions, publicHolding } = require('../src/portfolioMath.mjs')
 
@@ -68,6 +69,9 @@ const users = [
 
 const orders = []
 const trades = []
+const equityHistory = createEquityHistory()
+const initializedAt = Date.now()
+for (const user of users) equityHistory.record(user.id, getAccountData(user), initializedAt)
 
 function getTickCents(priceCents) {
     if (priceCents < 1000) {
@@ -373,10 +377,13 @@ function executeMatches(newOrder, stock) {
         trades.push(trade)
         completedTrades.push(trade)
 
+        const priceChanged = stock.price !== tradePrice
         updateStockPrice(
             stock,
             tradePrice
         )
+        recordAffectedEquity(equityHistory, users, stock.code, new Set([buyer.id, seller.id]),
+            priceChanged, getAccountData, Date.parse(trade.createdAt))
         publish('trade:new', stock.code, publicTrade(trade))
         publish('stock:update', stock.code, getStockData(stock))
         for (const interval of Object.keys(intervals)) {
@@ -468,6 +475,14 @@ app.get('/api/portfolio/:userId', (req, res) => {
 })
 
 app.get('/api/accounts', (req, res) => res.json(users.map(getAccountData)))
+
+app.get('/api/accounts/:userId/equity-history', (req, res) => {
+    const user = users.find(item => item.id === Number(req.params.userId))
+    if (!user) return res.status(404).json({ message: 'User not found' })
+    if (Object.keys(req.query).some(key => key !== 'range')) return res.status(400).json({ message: 'Invalid query parameter' })
+    try { res.json(equityHistory.read(user.id, req.query.range)) }
+    catch (error) { res.status(400).json({ message: error.message }) }
+})
 
 app.get('/api/accounts/:userId/trades', (req, res) => {
     const user = users.find(item => item.id === Number(req.params.userId))
@@ -765,17 +780,26 @@ app.delete('/api/orders/:id', (req, res) => {
 function startServer() {
     const marketSeeded = process.env.NIOUSTOCK_SEED_MARKET === '1'
     const candleSeeded = process.env.NIOUSTOCK_SEED_CANDLES === '1'
-    const seeded = marketSeeded || candleSeeded
+    const equitySeeded = process.env.NIOUSTOCK_SEED_EQUITY === '1'
+    const seeded = marketSeeded || candleSeeded || equitySeeded
     if (seeded && process.env.NODE_ENV === 'production') {
-        throw new Error('Candle seed is for local development only; disabled in production')
+        throw new Error('Seed data is for local development only; disabled in production')
     }
-    if (seeded && trades.length === 0) {
+    if ((marketSeeded || candleSeeded) && trades.length === 0) {
         trades.push(...(marketSeeded ? require('./seedMarket').generateMarketTrades(stocks, isValidStockPrice, getDailyPriceLimits) : require('./seedCandles').generateSeedTrades()))
         for (const stock of stocks) {
             const latest = trades.filter(trade => trade.stockCode === stock.code).at(-1)
             if (latest) updateStockPrice(stock, latest.price)
         }
         console.log('[DEV ONLY] Loaded ' + trades.length + ' simulated trades; accounts and orders are unchanged.')
+        // One baseline at the seeded current quote; never replay market fixtures as private history.
+        const now = new Date().toISOString()
+        for (const user of users) equityHistory.replace(user.id, [{ ...getAccountData(user), timestamp: now }])
+    }
+    if (equitySeeded) {
+        const user = users[0]
+        equityHistory.replace(user.id, require('./equityHistorySeed').generateEquityHistory(user.id, getAccountData(user)))
+        console.log('[DEV ONLY] Loaded simulated equity history for User 1; accounts, orders and trades are unchanged.')
     }
     const server = createServer()
     const ready = () => console.log('NiouStock server running at http://localhost:' + PORT)

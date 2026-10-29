@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { readApi, WS_URL } from '../stockSnapshot.mjs'
 import { revaluePortfolio } from '../portfolioMath.mjs'
+import EquityChart from './EquityChart.jsx'
 
 const amount = value => value.toLocaleString('zh-TW', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
 const signed = value => (value > 0 ? '+' : '') + amount(value)
@@ -72,6 +73,7 @@ export default function Portfolio() {
                 {[['totalAssets','總資產',false],['holdingsValue','持股市值',false],['cash','現金',false],['todayPnl','今日損益',true],['unrealizedPnl','未實現損益',true],['realizedPnl','已實現損益',true]].map(([key,label,pnl]) => <div className="card" key={key}><span>{label}</span><strong>{pnl ? signed(portfolio.summary[key]) : amount(portfolio.summary[key])}</strong></div>)}
             </div>
             <p>可用現金：{amount(portfolio.summary.availableCash)} ｜ 保留現金：{amount(portfolio.summary.reservedCash)}</p>
+            <EquityChart reload={reload} />
             <section className="market-section"><h2>持股</h2>
                 <div className="market-table-scroll"><table className="market-table">
                     <thead><tr>{['創作者','代號','分類','股數','可用股數','平均成本','現價','成本','市值','未實現損益','未實現 %','今日損益'].map(title => <th key={title}>{title}</th>)}</tr></thead>

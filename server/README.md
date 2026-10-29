@@ -1,5 +1,61 @@
 # Prototype trading API
 
+## Equity history
+`GET /api/accounts/:userId/equity-history?range=1M` returns `userId`, `range`,
+`points` and `summary`. Range defaults to `ALL`; supported values are `1D`
+(24 hours), `1W` (7 days), `1M` (30 days), `ALL`. Windows end at request time;
+both cutoff and now are inclusive. Invalid range/query returns 400; unknown user
+404. Timestamp comparisons use UTC milliseconds, not local strings.
+
+Points contain `id`, `userId`, ISO UTC `timestamp`, `cash`, `holdingsValue` and
+`totalAssets` (cash + holdings value, rounded to cents). Initial valuation is
+recorded once per user. Each real execution records buyer/seller after settlement
+and price update, plus other positive-quantity holders of the changed stock.
+Unrelated users, unchanged quotes, pending/cancelled/rejected orders and HTTP
+reads do not add snapshots. Consecutive identical cash, holdingsValue and
+totalAssets are skipped, including duplicate callbacks. Recording never changes
+cash, quantities, cost basis, PnL or orders; realized PnL is not added again.
+
+Points are oldest-first, with event order breaking equal timestamps. Every range
+returns at most 500 evenly sampled points, retaining first/last. Summary is over
+all records in the range before sampling: startValue, endValue, change,
+changePercent, high, low. Empty summaries are zero; zero startValue gives 0%.
+Ranges use the first observed point inside the window; no opening value is
+interpolated from outside the range. State is in memory only and resets on restart;
+storage itself is not capped yet. Caller userId is still not authentication.
+
+Portfolio shows an interactive total-assets area chart with drag, wheel/pinch
+zoom, crosshair and Taipei timestamps. Range changes fetch only history; entry
+and "更新帳戶" refresh it. Public stock:update continues revaluing current cards
+without fetching history or broadcasting private snapshots. Changes from other
+clients require manual refresh. Equal-millisecond points show the last valuation
+at that instant on the chart; API history and summary retain every execution.
+
+### Development equity curve
+Stop the existing backend, then run `node server/seedEquityHistory.js`.
+This entry point only configures seed mode and starts the server. The pure
+generator lives in `equityHistorySeed.js`; the server never imports the entry point.
+Equivalent: `$env:NIOUSTOCK_SEED_EQUITY='1'; node server/index.js`.
+This starts a fresh loopback-only server on port 3000; production rejects it.
+User 1 receives a deterministic 30-day hourly display fixture with up/down
+movements, ending at the current valuation. No orders, private trades, cash,
+holdings, average cost or realized PnL are changed. It does not inject into a
+running server and never runs in normal mode. The formula is repeatable for the
+same anchor timestamp and valuation; timestamps follow startup time.
+
+Market/candle seeds never replay their historical prices into private equity.
+They establish just one current-quote baseline per user. If equity and market
+seed flags are combined, the display curve ends at that seeded current valuation.
+To return to normal mode, stop the server and clear all seed flags, then restart:
+
+    Remove-Item Env:NIOUSTOCK_SEED_EQUITY -ErrorAction SilentlyContinue
+    Remove-Item Env:NIOUSTOCK_SEED_MARKET -ErrorAction SilentlyContinue
+    Remove-Item Env:NIOUSTOCK_SEED_CANDLES -ErrorAction SilentlyContinue
+    node server/index.js
+
+Reload the frontend after restarting. These are display fixtures, not actual
+account performance or a durable ledger.
+
 ## Private execution history
 `GET /api/accounts/:userId/trades` returns `items`, `pagination` and `summary`.
 Filters: `stockCode`, `side=buy|sell`, `from`, `to`; `page` defaults to 1,
