@@ -1,4 +1,4 @@
-const RANGE_MS = { '1D': 86400000, '1W': 7 * 86400000, '1M': 30 * 86400000, ALL: Infinity }
+const { periodStart } = require('../src/equityHistory.mjs')
 const MAX_POINTS = 500
 const cents = value => BigInt(Math.round(value * 100))
 const decimal = value => Number(value) / 100
@@ -23,10 +23,10 @@ function createEquityHistory() {
         for (const point of points) record(userId, point, Date.parse(point.timestamp))
     }
     function read(userId, range = 'ALL', now = Date.now()) {
-        if (typeof range !== 'string' || !Object.hasOwn(RANGE_MS, range)) throw new Error('Invalid range')
+        const from = periodStart(range, now, 'range')
         const filtered = (histories.get(userId) || []).filter(point => {
             const time = Date.parse(point.timestamp)
-            return time >= now - RANGE_MS[range] && time <= now
+            return time >= from && time <= now
         })
         const start = cents(filtered[0]?.totalAssets || 0), end = cents(filtered.at(-1)?.totalAssets || 0)
         const change = end - start

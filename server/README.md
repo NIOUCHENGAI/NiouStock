@@ -1,5 +1,66 @@
 # Prototype trading API
 
+## Trader rankings and aggressor flow
+- `GET /api/rankings/traders?period=1D`: `period`, `assetLeaders`,
+  `returnLeaders`, `realizedPnlLeaders`. Each row has rank, userId, name,
+  totalAssets, returnAmount, returnPercent, realizedPnl. Assets and realized PnL
+  use current account values; returns reuse equity history's first/last observed
+  values inside the selected window. Zero/one point gives zero change; zero
+  start gives 0%. Sort descending by the board metric, then numeric userId ascending.
+- `GET /api/market/flow/:code?period=1D`: stockCode, period, buyTurnover,
+  sellTurnover, netFlow, turnover, volume, tradeCount, buyRatio, sellRatio.
+- `GET /api/market/flow-rankings?period=1D`: period plus inflowLeaders
+  (netFlow descending), outflowLeaders (netFlow ascending), turnoverLeaders
+  (total turnover descending). Each includes code/name and flow fields; top 5,
+  ties by code ascending. Rankings include zero/negative values too.
+
+New endpoints default period to 1D. Shared periods: 1D = rolling 24h, 1W = 7d,
+1M = 30d, ALL = all recorded data up to now. Bounds are inclusive UTC instants.
+Invalid period returns 400; unknown stock returns 404. Existing market stats
+still use the Taipei calendar day; existing equity API still defaults to ALL.
+
+Every real execution stores aggressorSide from the incoming order, not the
+resting order or price movement. Buy turnover sums integer-cent price × quantity
+for buy aggressors, sell turnover for sell aggressors; netFlow = buy − sell.
+Ratios are percentages of classified turnover, rounded to 2 decimals (empty = 0).
+Volume/count/turnover cover all executions; any legacy execution without a side
+is unclassified and never guessed. This is prototype **aggressor execution flow**,
+not institutional/retail holdings, money deposited into the market or true net
+cash creation. Each trade still has both buyer and seller.
+
+Stock REST responses and public stock:update add `flows`, keyed by all four
+periods. Market derives 1D flow boards from the same stock state; StockDetail
+selects its period locally. Existing snapshot queuing/reconnect behavior applies;
+there is no new socket, polling, or duplicate flow store. Public flows contain
+no user IDs, costs or personal PnL. Public trade REST/trade:new contracts stay
+unchanged; aggressorSide remains on the internal execution record.
+The /rankings page has metric/period switches and manual refresh; it does not
+subscribe to private account activity. Expiring rolling windows refresh on the
+next stock update or REST reload, not a timer.
+
+### Rankings demo
+Stop the backend, then run `node server/seedRankings.js`. This entry point enables
+rankings + market seeds and starts a loopback-only development server on port
+3000. Production rejects all seed modes. It adds 8 fictional traders (10 users
+total), varied cash/positions/realized PnL, and deterministic 60-day hourly
+equity fixtures with different period returns. Existing User 1/2 account balances,
+holdings and costs stay unchanged; their equity curves are demo fixtures.
+Market/candle fixtures have deterministic aggressor sides but never settle
+accounts or create orders/private trade history. Pure account fixtures live in
+rankingsSeed.js; equity fixtures reuse equityHistorySeed.js, not CLI modules.
+Normal `node server/index.js` with no seed flags keeps only the two original users.
+
+To leave demo mode, stop the server, clear seed flags and restart:
+
+    Remove-Item Env:NIOUSTOCK_SEED_RANKINGS -ErrorAction SilentlyContinue
+    Remove-Item Env:NIOUSTOCK_SEED_MARKET -ErrorAction SilentlyContinue
+    Remove-Item Env:NIOUSTOCK_SEED_CANDLES -ErrorAction SilentlyContinue
+    Remove-Item Env:NIOUSTOCK_SEED_EQUITY -ErrorAction SilentlyContinue
+    node server/index.js
+
+Reload the frontend. IDs remain prototype caller-supplied identities; all data
+is in memory, lost on restart, with no fees/taxes or durable performance ledger.
+
 ## Equity history
 `GET /api/accounts/:userId/equity-history?range=1M` returns `userId`, `range`,
 `points` and `summary`. Range defaults to `ALL`; supported values are `1D`

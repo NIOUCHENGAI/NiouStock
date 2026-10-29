@@ -4,7 +4,9 @@ const http = require('node:http')
 const { WebSocketServer, WebSocket } = require('ws')
 const { intervals, aggregateCandles } = require('./candles')
 
-const { marketStats, rankStocks } = require('./market')
+const { marketStats, rankStocks, stockFlow, marketFlowRankings } = require('./market')
+const { traderRankings } = require('./traderRankings')
+const { EQUITY_RANGES } = require('../src/equityHistory.mjs')
 const { createStocks } = require('./stockFixtures')
 const { tradeHistory, money } = require('./tradeHistory')
 const { createEquityHistory, recordAffectedEquity } = require('./equityHistory')
@@ -183,9 +185,11 @@ function getStockData(stock) {
         limitDown
     } = getDailyPriceLimits(stock)
 
+    const now = Date.now()
     return {
         ...stock,
-        ...marketStats(trades, stock.code),
+        ...marketStats(trades, stock.code, now),
+        flows: Object.fromEntries(EQUITY_RANGES.map(period => [period, stockFlow(trades, stock.code, period, now)])),
         limitUp,
         limitDown,
         tickSize: getTickSize(stock.price)
@@ -345,6 +349,7 @@ function executeMatches(newOrder, stock) {
         updateOrderStatus(matchingOrder)
 
         const trade = {
+            aggressorSide: newOrder.side,
             sellerAverageCostAtTrade,
             sellerRealizedPnlMicros,
             sellerRealizedPnl: money(sellerRealizedPnlMicros),
@@ -498,6 +503,22 @@ app.get('/api/accounts/:id', (req, res) => {
 })
 
 app.get('/api/market/rankings', (req, res) => res.json(rankStocks(stocks.map(getStockData))))
+
+app.get('/api/rankings/traders', (req, res) => {
+    try { res.json(traderRankings(users, getAccountData, equityHistory, req.query.period)) }
+    catch (error) { res.status(400).json({ message: error.message }) }
+})
+
+app.get('/api/market/flow-rankings', (req, res) => {
+    try { res.json(marketFlowRankings(trades, stocks, req.query.period)) }
+    catch (error) { res.status(400).json({ message: error.message }) }
+})
+
+app.get('/api/market/flow/:code', (req, res) => {
+    if (!stocks.some(stock => stock.code === req.params.code)) return res.status(404).json({ message: 'Stock not found' })
+    try { res.json(stockFlow(trades, req.params.code, req.query.period)) }
+    catch (error) { res.status(400).json({ message: error.message }) }
+})
 
 app.get('/api/stocks', (req, res) => {
     res.json(
@@ -781,7 +802,8 @@ function startServer() {
     const marketSeeded = process.env.NIOUSTOCK_SEED_MARKET === '1'
     const candleSeeded = process.env.NIOUSTOCK_SEED_CANDLES === '1'
     const equitySeeded = process.env.NIOUSTOCK_SEED_EQUITY === '1'
-    const seeded = marketSeeded || candleSeeded || equitySeeded
+    const rankingsSeeded = process.env.NIOUSTOCK_SEED_RANKINGS === '1'
+    const seeded = marketSeeded || candleSeeded || equitySeeded || rankingsSeeded
     if (seeded && process.env.NODE_ENV === 'production') {
         throw new Error('Seed data is for local development only; disabled in production')
     }
@@ -800,6 +822,14 @@ function startServer() {
         const user = users[0]
         equityHistory.replace(user.id, require('./equityHistorySeed').generateEquityHistory(user.id, getAccountData(user)))
         console.log('[DEV ONLY] Loaded simulated equity history for User 1; accounts, orders and trades are unchanged.')
+    }
+    if (rankingsSeeded) {
+        const { createDemoTraders } = require('./rankingsSeed')
+        const { generateEquityHistory } = require('./equityHistorySeed')
+        const now = Date.now()
+        if (users.length === 2) users.push(...createDemoTraders())
+        for (const user of users) equityHistory.replace(user.id, generateEquityHistory(user.id, getAccountData(user), now, { profile: user.id, days: 60 }))
+        console.log('[DEV ONLY] Loaded fictional trader rankings; no orders or private trades were created.')
     }
     const server = createServer()
     const ready = () => console.log('NiouStock server running at http://localhost:' + PORT)

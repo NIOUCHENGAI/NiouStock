@@ -4,11 +4,14 @@ import { readApi, loadSnapshot, WS_URL } from '../stockSnapshot.mjs'
 import CandleChart from './CandleChart'
 import { addTrade, updateCandle } from '../marketUpdates.mjs'
 import { stepPrice } from '../priceSteps.mjs'
+import { EQUITY_RANGES } from '../equityHistory.mjs'
+import { formatAmount, formatPnl } from '../tradeHistory.mjs'
 
 function StockDetail() {
     const { code } = useParams()
 
     const [interval, setInterval] = useState('1m')
+    const [flowPeriod, setFlowPeriod] = useState('1D')
     const [candles, setCandles] = useState([])
     const [candleLoading, setCandleLoading] = useState(true)
     const [candleKey, setCandleKey] = useState('')
@@ -363,6 +366,7 @@ function StockDetail() {
     const total =
         Number(quantity || 0) *
         Number(price || 0)
+    const flow = stock?.flows?.[flowPeriod]
 
     const topBuys =
         orderBook.buys.slice(0, 5)
@@ -425,6 +429,15 @@ function StockDetail() {
 
                 <div>
                     <p role="status">{marketStatus}</p>
+                    <h2>資金流</h2>
+                    <div className="market-controls" role="group" aria-label="資金流期間">
+                        {EQUITY_RANGES.map(value => <button type="button" key={value} aria-pressed={flowPeriod === value} onClick={() => setFlowPeriod(value)}>{value}</button>)}
+                    </div>
+                    {flow ? <>
+                        <p>主動買入金額：${formatAmount(flow.buyTurnover)} ｜ 主動賣出金額：${formatAmount(flow.sellTurnover)}</p>
+                        <p>{flow.netFlow < 0 ? '淨流出' : '淨流入'} ${formatPnl(flow.netFlow)} ｜ 買盤 {formatAmount(flow.buyRatio)}% ｜ 賣盤 {formatAmount(flow.sellRatio)}%</p>
+                    </> : <p>資金流資料暫時無法取得</p>}
+                    <p>以主動成交金額計算，不代表法人或散戶籌碼。</p>
                     <h2>K 線</h2>
                     {['1m', '5m', '15m', '1h', '1d'].map(value => <button key={value} type="button" aria-pressed={interval === value} onClick={() => setInterval(value)}>{value}</button>)}
                     <CandleChart candles={candles} interval={interval} datasetKey={code + ":" + interval} loading={candleLoading || candleKey !== code + ":" + interval} error={candleError} />

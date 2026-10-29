@@ -1,7 +1,8 @@
 import { useEffect, useMemo, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { readApi, WS_URL } from '../stockSnapshot.mjs'
-import { filterStocks, marketRankings, updateMarket } from '../marketHelpers.mjs'
+import { filterStocks, marketRankings, updateMarket, flowRankings } from '../marketHelpers.mjs'
+import { formatPnl } from '../tradeHistory.mjs'
 
 const signed = value => (value > 0 ? '+' : '') + value.toFixed(2)
 export default function Market() {
@@ -76,6 +77,7 @@ export default function Market() {
     // Rankings always follow the current full market, independent of list filters.
     const currentRankings = useMemo(() => stocks.length ? marketRankings(stocks) : rankings, [stocks, rankings])
     const visible = useMemo(() => filterStocks(stocks, category, search), [stocks, category, search])
+    const flows = useMemo(() => flowRankings(stocks.filter(stock => stock.flows?.['1D']).map(stock => ({ code: stock.code, name: stock.name, ...stock.flows['1D'] }))), [stocks])
     return <div className="main">
         <section className="welcome"><h1>NiouStock 市場</h1><p>虛構創作者測試市場</p></section>
         <p role="status">{status}</p>
@@ -85,6 +87,12 @@ export default function Market() {
             {[['gainers', '漲幅排行', 'changePercent'], ['losers', '跌幅排行', 'changePercent'], ['volumeLeaders', '成交量排行', 'volume']].map(([key, title, metric]) =>
                 <section className="market-section" key={key}><h2>{title}</h2><ol>
                     {(currentRankings?.[key] ?? []).map(stock => <li key={stock.code}><Link to={'/stock/' + stock.code}>{stock.name} ({stock.code})</Link>{' '}{metric === 'volume' ? stock.volume.toLocaleString() + ' 股' : signed(stock.changePercent) + '%'}</li>)}
+                </ol></section>)}
+        </div>
+        <div className="market-rankings">
+            {[['inflowLeaders', '資金流入排行'], ['outflowLeaders', '資金流出排行']].map(([key, title]) =>
+                <section className="market-section" key={key}><h2>{title} · 1D</h2><p>最近 24 小時主動成交資金流</p><ol>
+                    {flows[key].map(item => <li key={item.code}><Link to={'/stock/' + item.code}>{item.name} ({item.code})</Link>{' $'}{formatPnl(item.netFlow)}</li>)}
                 </ol></section>)}
         </div>
         <section className="market-section">

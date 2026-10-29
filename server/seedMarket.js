@@ -23,6 +23,7 @@ function generateMarketTrades(stocks, isValidPrice, getLimits, now = Date.now())
                 const tickOffset = final ? 0 : [-1, 2, -2, 1, 0][tick]
                 const price = legal[Math.max(0, Math.min(legal.length - 1, nearest + tickOffset))]
                 result.push({ stockCode: stock.code, price,
+                    aggressorSide: (minute * 3 + tick + index) % 10 < 2 + index % 7 ? 'buy' : 'sell',
                     quantity: (index + 1) * (10 + (minute * 3 + tick) % 4 * 5),
                     createdAt: new Date(start + minute * 60000 + (tick + 1) * 60000 / (count + 1)).toISOString(), simulated: true })
             }

@@ -11,6 +11,7 @@ function generateSeedTrades(now = Date.now()) {
             result.push({
                 id: result.length + 1,
                 stockCode: 'YT001',
+                aggressorSide: (minute + tick) % 3 === 0 ? 'sell' : 'buy',
                 price,
                 quantity: 10 * (1 + (minute * 7 + tick * 3) % 20),
                 createdAt: new Date(end - (60 - minute) * 60000 + (tick + 1) * 15000).toISOString(),
