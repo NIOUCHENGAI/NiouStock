@@ -3,6 +3,7 @@ import { BrowserRouter, Routes, Route, Link } from 'react-router-dom'
 import Market from './pages/Market.jsx'
 import StockDetail from './pages/StockDetail.jsx'
 import Portfolio from './pages/Portfolio.jsx'
+import TradeHistory from './pages/TradeHistory.jsx'
 
 function Home() {
     return (
@@ -62,10 +63,11 @@ function Home() {
 function App() {
     return (
         <BrowserRouter>
-            <header className="header"><Link className="logo" to="/">NiouStock</Link><nav className="nav"><Link to="/market">Market</Link><Link to="/portfolio">Portfolio</Link></nav></header>
+            <header className="header"><Link className="logo" to="/">NiouStock</Link><nav className="nav"><Link to="/market">Market</Link><Link to="/portfolio">Portfolio</Link><Link to="/history">交易紀錄</Link></nav></header>
             <Routes>
                 <Route path="/" element={<Home />} />
                 <Route path="/portfolio" element={<Portfolio />} />
+                <Route path="/history" element={<TradeHistory />} />
                 <Route path="/market" element={<Market />} />
                 <Route path="/stock/:code" element={<StockDetail />} />
             </Routes>

@@ -171,3 +171,6 @@ button {
 @media (max-width: 900px) { .market-rankings { grid-template-columns: 1fr; } }
 
 .portfolio-summary { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 16px; margin-top: 20px; }
+
+.history-filters { display: flex; flex-wrap: wrap; align-items: center; gap: 16px; margin: 20px 0; }
+.history-filters input, .history-filters select, .history-filters button { padding: 8px; }

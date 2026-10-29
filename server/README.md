@@ -1,5 +1,34 @@
 # Prototype trading API
 
+## Private execution history
+`GET /api/accounts/:userId/trades` returns `items`, `pagination` and `summary`.
+Filters: `stockCode`, `side=buy|sell`, `from`, `to`; `page` defaults to 1,
+`limit` defaults to 20 (1–100). Invalid filters return 400, unknown user 404.
+Date-only bounds use Asia/Taipei: from includes midnight, to includes the whole
+specified day. ISO datetimes require an explicit timezone: from is inclusive,
+to exclusive. Reversed/empty ranges are rejected. Sort: createdAt descending,
+then numeric trade ID descending. Empty results have totalPages 0.
+
+Each item is one actual execution from the requested user's perspective, with
+tradeId, stock metadata, side, price, quantity, amount, realizedPnl and
+averageCostAtTrade. Seller cost is captured before settlement; realized PnL is
+(execution price − captured average cost) × executed quantity. Buyer realized
+PnL is zero; buyer averageCostAtTrade is the average immediately after that fill.
+Later purchases never recalculate previous history. Internal PnL uses BigInt
+millionths, displayed money rounds to cents. Summary totals all filtered records
+before pagination: totalBuys/totalSells are execution counts, totalBuyAmount,
+totalSellAmount and realizedPnl are monetary totals. Realized PnL is rounded once
+over the exact sum, so it may differ slightly from summing rounded row amounts.
+No unrealized PnL is included.
+
+Market/candle seed trades never belong to private history. Only matching-engine
+executions with both account owners qualify. Public trade REST endpoints and
+trade:new expose only id, stockCode, price, quantity and createdAt.
+The `/history` page uses User 1, with filters, pagination and manual refresh;
+it does not refetch on public trades. Recent-day filters are rolling 7/30 × 24h.
+Caller-supplied userId remains a prototype trust convention, **not authorization**.
+History is in memory and disappears on restart; there is no private WebSocket.
+
 Run `node server/index.js` for port 3000, `npm run dev` for the frontend,
 `npm test` for isolated HTTP integration tests, and `npm run build` for production assets.
 On Windows, use `npm.cmd` if PowerShell blocks `npm.ps1`.

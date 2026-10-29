@@ -6,6 +6,7 @@ const { intervals, aggregateCandles } = require('./candles')
 
 const { marketStats, rankStocks } = require('./market')
 const { createStocks } = require('./stockFixtures')
+const { tradeHistory, money } = require('./tradeHistory')
 
 const { createHolding, buyHolding, sellHolding, valuePosition, summarizePositions, publicHolding } = require('../src/portfolioMath.mjs')
 
@@ -324,6 +325,9 @@ function executeMatches(newOrder, stock) {
         buyer.cash = (Math.round(buyer.cash * 100) - amountCents) / 100
         seller.cash = (Math.round(seller.cash * 100) + amountCents) / 100
         const bought = buyer.holdings[stock.code] ||= createHolding()
+        const sellerAverageCostAtTrade = Number(seller.holdings[stock.code].averageCostMicros) / 1000000
+        const sellerRealizedPnlMicros = (BigInt(Math.round(tradePrice * 1000000)) - seller.holdings[stock.code].averageCostMicros) * BigInt(tradeQuantity)
+        const buyerAverageCostBefore = publicHolding(bought).averageCost
         buyHolding(bought, tradeQuantity, tradePrice)
         sellHolding(seller.holdings[stock.code], tradeQuantity, tradePrice)
 
@@ -337,6 +341,11 @@ function executeMatches(newOrder, stock) {
         updateOrderStatus(matchingOrder)
 
         const trade = {
+            sellerAverageCostAtTrade,
+            sellerRealizedPnlMicros,
+            sellerRealizedPnl: money(sellerRealizedPnlMicros),
+            buyerAverageCostBefore,
+            buyerAverageCostAfter: publicHolding(bought).averageCost,
             id: trades.length + 1,
             stockCode: newOrder.stockCode,
             price: tradePrice,
@@ -460,6 +469,13 @@ app.get('/api/portfolio/:userId', (req, res) => {
 
 app.get('/api/accounts', (req, res) => res.json(users.map(getAccountData)))
 
+app.get('/api/accounts/:userId/trades', (req, res) => {
+    const user = users.find(item => item.id === Number(req.params.userId))
+    if (!user) return res.status(404).json({ message: 'User not found' })
+    try { res.json(tradeHistory(trades, stocks, user.id, req.query)) }
+    catch (error) { res.status(400).json({ message: error.message }) }
+})
+
 app.get('/api/accounts/:id', (req, res) => {
     const user = users.find(user => user.id === Number(req.params.id))
     if (!user) return res.status(404).json({ message: '找不到這個使用者' })
@@ -508,7 +524,7 @@ app.get('/api/candles/:code', (req, res) => {
 })
 
 app.get('/api/trades', (req, res) => {
-    res.json(trades)
+    res.json(trades.map(publicTrade))
 })
 
 app.get('/api/trades/:code', (req, res) => {
@@ -536,7 +552,7 @@ app.get('/api/trades/:code', (req, res) => {
             )
         })
 
-    res.json(stockTrades)
+    res.json(stockTrades.map(publicTrade))
 })
 
 app.get('/api/orderbook/:code', (req, res) => {
@@ -708,7 +724,7 @@ app.post('/api/orders', (req, res) => {
                 ? '訂單建立成功並產生成交'
                 : '訂單建立成功，目前沒有成交',
         order,
-        trades: completedTrades
+        trades: completedTrades.map(({ sellerRealizedPnlMicros, ...trade }) => trade)
     })
 })
 
