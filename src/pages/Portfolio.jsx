@@ -3,9 +3,8 @@ import { Link } from 'react-router-dom'
 import { readApi, WS_URL } from '../stockSnapshot.mjs'
 import { revaluePortfolio } from '../portfolioMath.mjs'
 import EquityChart from './EquityChart.jsx'
+import { formatAmount as amount, formatPnl as signed } from '../tradeHistory.mjs'
 
-const amount = value => value.toLocaleString('zh-TW', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
-const signed = value => (value > 0 ? '+' : '') + amount(value)
 export default function Portfolio() {
     const [portfolio, setPortfolio] = useState(null)
     const [error, setError] = useState('')

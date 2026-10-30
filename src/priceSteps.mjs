@@ -1,11 +1,4 @@
-function tickCents(cents) {
-    if (cents < 1000) return 1
-    if (cents < 5000) return 5
-    if (cents < 10000) return 10
-    if (cents < 50000) return 50
-    if (cents < 100000) return 100
-    return 500
-}
+import { getTickCents } from './stockPrices.mjs'
 
 // Returns null for invalid inputs. Check bounds before converting user input to cents.
 export function stepPrice(value, direction, limitDown, limitUp) {
@@ -28,7 +21,7 @@ export function stepPrice(value, direction, limitDown, limitUp) {
         const cents = start + direction * offset
         if (cents <= low) return low / 100
         if (cents >= high) return high / 100
-        if (cents % tickCents(cents) === 0) return cents / 100
+        if (cents % getTickCents(cents) === 0) return cents / 100
     }
     return null
 }
